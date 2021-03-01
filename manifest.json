@@ -1,0 +1,38 @@
+{
+  "Actions": [
+    {
+      "Icon": "Images/Placeholder",
+      "Name": "Application Placehoder",
+      "States": [
+        {
+          "Image": "Images/Placeholder",
+          "TitleAlignment": "top",
+          "FontSize": "12"
+        }
+      ],
+      "SupportedInMultiActions": false,
+      "Tooltip": "",
+      "UUID": "com.javanpoirier.audiomixer.application",
+      "PropertyInspectorPath": "PropertyInspector/PluginActionPI.html"
+    }
+  ],
+  "Author": "Javan Poirier",
+  "Name": "Audio Mixer",
+  "Description": "Allows for mixing of application volumes.",
+  "Icon": "Images/Icon",
+  "URL": "",
+  "Version": "1.0",
+  "CodePath": "com.javanpoirier.audiomixer",
+  "Category": "Audio Mixer",
+  "CategoryIcon": "Images/Icon",
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "SDKVersion": 2,
+  "Software": {
+    "MinimumVersion": "4.9"
+  }
+}
