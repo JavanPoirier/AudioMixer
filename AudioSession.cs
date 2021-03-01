@@ -23,9 +23,8 @@ namespace AudioMixer
 
         public readonly string processName;
         public Bitmap processIcon { get; private set; }
-        public int volume { get; private set; }
 
-        public AudioSession(ref MMDevice device, AudioSessionControl session)
+        public AudioSession(MMDevice device, AudioSessionControl session)
         {
             this.device = device;
             this.session = session;
@@ -37,20 +36,15 @@ namespace AudioMixer
             {
                 processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
                 session.RegisterEventClient(this);
-            } catch(Exception e)
+            }
+            catch (Exception e)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, "This application must be run as an administrator.");
             }
         }
 
-        public void UpdateVolume(int volume)
-        {
-            session.SimpleAudioVolume.Volume = volume;
-        }
-
         public void OnVolumeChanged(float volume, bool isMuted)
         {
-            this.volume = (int)(Math.Round(volume * this.device.AudioEndpointVolume.MasterVolumeLevelScalar * 100));
             if (VolumeChanged != null)
                 VolumeChanged(this, null);
         }
@@ -73,6 +67,11 @@ namespace AudioMixer
 
         public void OnStateChanged(AudioSessionState e)
         {
+            if (e == AudioSessionState.AudioSessionStateExpired)
+            {
+                if (SessionDisconnnected != null)
+                    SessionDisconnnected(this, null);
+            }
         }
 
         public void OnSessionDisconnected(AudioSessionDisconnectReason disconnectReason)

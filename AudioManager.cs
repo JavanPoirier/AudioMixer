@@ -7,13 +7,17 @@ namespace AudioMixer
 {
     public sealed class AudioManager
     {
-        private static readonly AudioManager instance = new AudioManager();
-
+        private static readonly Lazy<AudioManager> instance = new Lazy<AudioManager>(() => new AudioManager());
         private MMDevice device;
+
         public List<AudioSession> audioSessions = new List<AudioSession>();
 
-        static AudioManager()
+        public static AudioManager Instance
         {
+            get
+            {
+                return instance.Value;
+            }
         }
 
         private AudioManager()
@@ -27,28 +31,19 @@ namespace AudioMixer
             }
             else
             {
-                audioSessions = new List<AudioSession>(sessions.Count);
                 for (int i = 0; i < sessions.Count; i++)
                 {
                     var session = sessions[i];
                     if (!session.IsSystemSoundsSession && ProcessExists(session.GetProcessID))
                     {
-                        AddAudioSession(null, session as IAudioSessionControl);
+                        var audioSession = new AudioSession(device, session);
+                        audioSessions.Add(audioSession);
                     }
                 }
             }
 
             device.AudioSessionManager.OnSessionCreated += AddAudioSession;
         }
-
-        public static AudioManager Instance
-        {
-            get
-            {
-                return instance;
-            }
-        }
-
 
         bool ProcessExists(uint processId)
         {
@@ -65,8 +60,10 @@ namespace AudioMixer
 
         void AddAudioSession(object sender, IAudioSessionControl newSession)
         {
-            var audioSession = new AudioSession(ref device, (AudioSessionControl)newSession);
+            var audioSession = new AudioSession(device, new AudioSessionControl(newSession));
             audioSessions.Add(audioSession);
+
+            PluginController.Instance.UpdateActions();
         }
     }
 }

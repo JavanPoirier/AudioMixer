@@ -15,7 +15,8 @@ namespace AudioMixer
 {
     public static class Utils
     {
-        private static Font font = new Font("Arial", 22, FontStyle.Regular);
+        private static Font font = new Font("Arial", 28F, FontStyle.Regular);
+        private static FontFamily fontFamily = new FontFamily("Arial");
 
         public static Image CreateIconImage(Bitmap icon)
         {
@@ -41,14 +42,25 @@ namespace AudioMixer
 
             using (Graphics graph = Graphics.FromImage(clone))
             {
-                // graph.DrawString($"{(volume * 100)}%", font, Brushes.White, new RectangleF(54, 108, 90, 36), new StringFormat());
+                var stringFormat = new StringFormat();
+                stringFormat.Alignment = StringAlignment.Far;
+                stringFormat.LineAlignment = StringAlignment.Far;
+
+                graph.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graph.SmoothingMode = SmoothingMode.HighQuality;
+                graph.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 graph.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
                 graph.CompositingQuality = CompositingQuality.HighQuality;
+                graph.FillRectangle(Brushes.Transparent, new Rectangle(0, 0, 144, 144));
 
                 GraphicsPath path = new GraphicsPath();
-                path.AddString($"{volume * 100}%", FontFamily.GenericSansSerif, (int)FontStyle.Regular, 16F, new Point(0, 0), new StringFormat());
+                float emSize = graph.DpiY * font.Size / 72;
+                path.AddString($"{volume * 100}%", fontFamily, (int)FontStyle.Regular, emSize, new Rectangle(0, 0, 144, 144), stringFormat);
 
-                graph.DrawPath(Pens.Black, path);
+                Pen pen = new Pen(Brushes.Black);
+                pen.Width = 5F;
+                graph.DrawPath(pen, path);
+                graph.FillPath(Brushes.White, path);
 
                 return clone;
             };
@@ -60,8 +72,8 @@ namespace AudioMixer
 
             using (Graphics graph = Graphics.FromImage(clone))
             {
-                graph.DrawImage(iconImage, new Point(0, 0));
-                graph.DrawImage(volumeImage, new Point(0, 0));
+                graph.DrawImage(iconImage, new Rectangle(0, 0, 144, 144));
+                graph.DrawImage(volumeImage, new Rectangle(0, 0, 144, 144));
                 return clone;
             }
         }

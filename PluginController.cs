@@ -9,35 +9,29 @@ using System.Threading.Tasks;
 
 namespace AudioMixer
 {
-    public sealed class PluginController 
+    public class PluginController 
     {
-        private static readonly PluginController instance = new PluginController();
-
+        private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
         private GlobalSettings globalSettings;
-        private List<PluginAction> pluginActions = new List<PluginAction>();
-        
+
+        public List<PluginAction> pluginActions = new List<PluginAction>();
         public AudioManager audioManager = AudioManager.Instance;
         public List<string> blacklist = new List<string>();
         public List<string> whitelist = new List<string>();
-
-        static PluginController()
-        {
-            Logger.Instance.LogMessage(TracingLevel.INFO, $"PluginController");
-        }
-
-        private PluginController()
-        {
-            Logger.Instance.LogMessage(TracingLevel.INFO, $"PluginController: {GetHashCode()}");
-            GlobalSettingsManager.Instance.OnReceivedGlobalSettings += GlobalSettingsReceived;
-            GlobalSettingsManager.Instance.RequestGlobalSettings();
-        }
 
         public static PluginController Instance
         {
             get
             {
-                return instance;
+                return instance.Value;
             }
+        }
+
+        private PluginController()
+        {
+            Logger.Instance.LogMessage(TracingLevel.DEBUG, $"PluginController: {GetHashCode()}");
+            GlobalSettingsManager.Instance.OnReceivedGlobalSettings += GlobalSettingsReceived;
+            GlobalSettingsManager.Instance.RequestGlobalSettings();
         }
 
         private void GlobalSettingsReceived(object sender, ReceivedGlobalSettingsPayload globalSettingsPayload)
@@ -63,7 +57,7 @@ namespace AudioMixer
             pluginActions.FirstOrDefault().connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
         }
 
-        public int AddAction(PluginAction pluginAction)
+        public void AddAction(PluginAction pluginAction)
         {
             // Find where the key should live.
             var newPosValue = pluginActions.Count();
@@ -77,12 +71,21 @@ namespace AudioMixer
                 }
             }
             pluginActions.Insert(newPosValue, pluginAction);
-            return newPosValue;
+            this.UpdateActions();
         }
 
         public void RemoveAction(PluginAction pluginAction)
         {
             pluginActions.Remove(pluginAction);
+            this.UpdateActions();
+        }
+
+        public void UpdateActions()
+        {
+            pluginActions.ForEach((pluginAction) =>
+            {
+                pluginAction.UpdateKey();
+            });
         }
 
         public void Dispose()
