@@ -13,7 +13,6 @@ namespace AudioMixer
     [PluginActionId("com.javanpoirier.audiomixer.application")]
     public class PluginAction : PluginBase
     {
-        private AudioManager audioManager = AudioManager.Instance;
         private PluginController pluginController = PluginController.Instance;
         private PluginSettings settings;
         private System.Timers.Timer timer = new System.Timers.Timer(3000);
@@ -47,44 +46,47 @@ namespace AudioMixer
 
         public void UpdateKey()
         {
-            var index = pluginController.pluginActions.IndexOf(this);
+            if (audioSession != null)
+            {
+                audioSession.SessionDisconnnected -= SessionDisconnected;
+                audioSession.VolumeChanged -= VolumeChanged;
+            }
 
             try
             {
+                var index = pluginController.pluginActions.IndexOf(this);
                 audioSession = pluginController.audioManager.audioSessions[index];
-                audioSession.SessionDisconnnected += SessionDisconnected;
-                audioSession.VolumeChanged += VolumeChanged;
             }
             catch (ArgumentOutOfRangeException)
             {
+                audioSession = null;
+            }
+
+
+            if (audioSession != null)
+            {
+                audioSession.SessionDisconnnected += SessionDisconnected;
+                audioSession.VolumeChanged += VolumeChanged;
+
+                iconImage = Utils.CreateIconImage(audioSession.processIcon);
+                volumeImage = Utils.CreateVolumeImage(audioSession.session.SimpleAudioVolume.Volume);
+
+                connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage), null, true);
+            }
+            else
+            {
                 connection.SetDefaultImageAsync();
-            }
-
-            try
-            {
-                if (audioSession != null)
-                {
-                    iconImage = Utils.CreateIconImage(audioSession.processIcon);
-                    volumeImage = Utils.CreateVolumeImage(audioSession.session.SimpleAudioVolume.Volume);
-
-                    connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage), null, true);
-                }
-                else
-                {
-                    connection.SetDefaultImageAsync();
-                }
-            }
-            catch (Exception e)
-            {
-                Logger.Instance.LogMessage(TracingLevel.ERROR, e.Message);
-            }
+            }     
         }
 
         void SessionDisconnected(object sender, EventArgs e)
         {
-            pluginController.audioManager.audioSessions.Remove(audioSession);
-            audioSession.SessionDisconnnected -= SessionDisconnected;
-            audioSession.VolumeChanged -= VolumeChanged;
+            if (audioSession != null)
+            {
+                pluginController.audioManager.audioSessions.Remove(audioSession);
+                audioSession.SessionDisconnnected -= SessionDisconnected;
+                audioSession.VolumeChanged -= VolumeChanged;
+            }
 
             pluginController.UpdateActions();
         }
@@ -129,6 +131,8 @@ namespace AudioMixer
             if (timerElapsed)
             {
                 pluginController.blacklist.Add(audioSession.session.GetSessionIdentifier);
+                pluginController.audioManager.audioSessions.Remove(audioSession);
+                pluginController.UpdateActions();
             } else
             {
                 if (toggled)

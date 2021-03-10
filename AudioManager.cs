@@ -5,23 +5,17 @@ using System.Collections.Generic;
 
 namespace AudioMixer
 {
-    public sealed class AudioManager
+    public class AudioManager
     {
-        private static readonly Lazy<AudioManager> instance = new Lazy<AudioManager>(() => new AudioManager());
+        private PluginController pluginController;
         private MMDevice device;
 
         public List<AudioSession> audioSessions = new List<AudioSession>();
 
-        public static AudioManager Instance
+        public AudioManager(PluginController pluginController)
         {
-            get
-            {
-                return instance.Value;
-            }
-        }
+            this.pluginController = pluginController;
 
-        private AudioManager()
-        {
             var deviceEnumerator = new MMDeviceEnumerator();
             device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
 
@@ -36,8 +30,10 @@ namespace AudioMixer
                     var session = sessions[i];
                     if (!session.IsSystemSoundsSession && ProcessExists(session.GetProcessID))
                     {
-                        var audioSession = new AudioSession(device, session);
-                        audioSessions.Add(audioSession);
+                        if (!pluginController.blacklist.Contains(session.GetSessionIdentifier)) {
+                            var audioSession = new AudioSession(device, session);
+                            audioSessions.Add(audioSession);
+                        }
                     }
                 }
             }
@@ -60,8 +56,11 @@ namespace AudioMixer
 
         void AddAudioSession(object sender, IAudioSessionControl newSession)
         {
-            var audioSession = new AudioSession(device, new AudioSessionControl(newSession));
-            audioSessions.Add(audioSession);
+            var session = new AudioSessionControl(newSession);
+            if (!pluginController.blacklist.Contains(session.GetSessionIdentifier)) {
+                var audioSession = new AudioSession(device, session);
+                audioSessions.Add(audioSession);
+            }
 
             PluginController.Instance.UpdateActions();
         }

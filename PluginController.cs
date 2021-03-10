@@ -1,11 +1,10 @@
 ﻿using BarRaider.SdTools;
+using Gma.System.MouseKeyHook;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace AudioMixer
 {
@@ -14,8 +13,8 @@ namespace AudioMixer
         private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
         private GlobalSettings globalSettings;
 
+        public AudioManager audioManager;
         public List<PluginAction> pluginActions = new List<PluginAction>();
-        public AudioManager audioManager = AudioManager.Instance;
         public List<string> blacklist = new List<string>();
         public List<string> whitelist = new List<string>();
 
@@ -32,6 +31,8 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.DEBUG, $"PluginController: {GetHashCode()}");
             GlobalSettingsManager.Instance.OnReceivedGlobalSettings += GlobalSettingsReceived;
             GlobalSettingsManager.Instance.RequestGlobalSettings();
+
+            audioManager = new AudioManager(this);
         }
 
         private void GlobalSettingsReceived(object sender, ReceivedGlobalSettingsPayload globalSettingsPayload)
@@ -68,6 +69,7 @@ namespace AudioMixer
                 if (posValue <= _posValue)
                 {
                     newPosValue = _pluginAction.index;
+                    break;
                 }
             }
             pluginActions.Insert(newPosValue, pluginAction);

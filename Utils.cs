@@ -58,13 +58,15 @@ namespace AudioMixer
                 path.AddString($"{volume * 100}%", fontFamily, (int)FontStyle.Regular, emSize, new Rectangle(0, 0, 144, 144), stringFormat);
 
                 Pen pen = new Pen(Brushes.Black);
-                pen.Width = 5F;
+                pen.Width = 10F;
                 graph.DrawPath(pen, path);
                 graph.FillPath(Brushes.White, path);
 
                 return clone;
             };
         }
+
+        //public static Image CreateAppHighlight() { }
 
         public static Image CreateAppKey(Image iconImage, Image volumeImage) 
         {
