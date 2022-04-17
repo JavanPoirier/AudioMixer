@@ -12,20 +12,39 @@
 </head>
 <body>
     <div class="sdpi-wrapper">
-        <div class="sdpi-item" id="dvSave">
+        <div class="sdpi-item-label">Advanced</div>
+        <div class="sdpi-item-value">
+            <input id="enterMode" type="checkbox" value="" class="sdProperty sdCheckbox" oninput="setSettings()">
+            <label for="enterMode" class="sdpi-item-label"><span></span>Secondary ENTER behaviour</label>
+        </div>
+        <div type="range" class="sdpi-item">
+            <details class="message info">
+                <summary>You require at least 4 placeholders to show controls inline.</summary>
+            </details>
+        </div>
+        <hr />
+        <div type="range" class="sdpi-item sdShowTooltip" id="dvVolumeStep">
             <div class="sdpi-item-label">Volume Step</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="blacklistTimeout" oninput="blacklistSelected()" sdListTextProperty="soundName" sdListValueProperty="soundIndex" sdValueField="soundTitle"></select>
-            <button class="sdpi-item-value max20" onclick="removeBlacklist()">Remove</button>
+            <div class="sdpi-item-value">
+                <span class="clickable" value="1">1</span>
+                <input type="range" min="1" max="25" value="20" class="sdProperty" oninput="setSettings()" id="volumeStep">
+                <span class="clickable" value="25">25</span>
+                <label for="volumeStep" class="rangeLabel"></label>
+            </div>
         </div>
-        <div class="sdpi-item" id="dvSave">
-            <div class="sdpi-item-label">Blacklist</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="blacklistTimeout" oninput="blacklistSelected()" sdListTextProperty="soundName" sdListValueProperty="soundIndex" sdValueField="soundTitle"></select>
-            <button class="sdpi-item-value max20" onclick="removeBlacklist()">Remove</button>
+        <div class="sdpi-item" id="dvStaticApp">
+            <div class="sdpi-item-label">Static App</div>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticApp" oninput="setStaticApp()" sdListTextProperty="soundName" sdListValueProperty="soundIndex" sdValueField="soundTitle"></select>
         </div>
-        <div class="sdpi-item" id="dvTitlePrefix">
+        <div class="sdpi-item" id="dvWhitelist">
             <div class="sdpi-item-label">Whitelist</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="whitelist" oninput="whitelistSelected()" sdListTextProperty="soundName" sdListValueProperty="soundIndex" sdValueField="soundTitle"></select>
-            <button class="sdpi-item-value max20" onclick="removeWhitelist()">Remove</button>
+            <select class="sdpi-item-value select sdProperty sdList" id="whitelist" sdListTextProperty="soundName" sdListValueProperty="soundIndex" sdValueField="soundTitle"></select>
+            <button class="sdpi-item-value max20" onclick="toggleFromWhitelist()">Add/Remove</button>
+        </div>
+        <div class="sdpi-item" id="dvBlacklist">
+            <div class="sdpi-item-label">Blacklist</div>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklist" sdListTextProperty="soundName" sdListValueProperty="soundIndex" sdValueField="soundTitle"></select>
+            <button class="sdpi-item-value max20" onclick="toggleFromBlacklist()">Add/Remove</button>
         </div>
     </div>
 </body>

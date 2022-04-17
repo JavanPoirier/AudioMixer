@@ -76,7 +76,7 @@ namespace AudioMixer
 
         //public static Image CreateAppHighlight() { }
 
-        public static Image CreateAppKey(Image iconImage, Image volumeImage, Boolean selected)
+        public static Image CreateAppKey(Image iconImage, Image volumeImage, Boolean selected, Boolean muted)
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
@@ -85,6 +85,20 @@ namespace AudioMixer
                 int contentSize = selected ? 120 : 144;
                 graph.DrawImage(iconImage, new Rectangle(0, 0, 144, 144));
                 graph.DrawImage(volumeImage, new Rectangle(0, 0, 144, 144));
+
+                if (muted)
+                {
+                    Graphics line = Graphics.FromImage(clone);
+                    GraphicsPath linePath = new GraphicsPath();
+                    linePath.AddLines(new Point[] {
+                    new Point(20, 134),
+                    new Point(10, 124),
+                    new Point(124, 10),
+                    new Point(134, 20)
+                });
+                    line.DrawPath(new Pen(Brushes.Black, 12F), linePath);
+                    line.FillPath(Brushes.Red, linePath);
+                }
 
                 if (selected)
                 {

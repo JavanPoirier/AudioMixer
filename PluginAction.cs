@@ -69,13 +69,14 @@ namespace AudioMixer
             if (audioSession != null)
             {
                 Boolean selected = pluginController.SelectedAction == this;
+                Boolean muted = audioSession.session.SimpleAudioVolume.Mute;
 
                 audioSession.SessionDisconnnected += SessionDisconnected;
                 audioSession.VolumeChanged += VolumeChanged;
 
                 iconImage = Utils.CreateIconImage(audioSession.processIcon);
                 volumeImage = Utils.CreateVolumeImage(audioSession.session.SimpleAudioVolume.Volume);
-                connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected), null, true);
+                connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
             }
             else
             {
@@ -98,8 +99,9 @@ namespace AudioMixer
         void VolumeChanged(object sender, EventArgs e)
         {
             Boolean selected = pluginController.SelectedAction == this;
+            Boolean muted = audioSession.session.SimpleAudioVolume.Mute;
             volumeImage = Utils.CreateVolumeImage(audioSession.session.SimpleAudioVolume.Volume);
-            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected), null, true);
+            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
         }
 
         public override void Dispose()
@@ -175,7 +177,6 @@ namespace AudioMixer
                                 {
                                     newVolume = volume.Volume + volumeStep;
                                     volume.Volume = newVolume > 1F ? 1F : newVolume;
-                                   
                                 }
                                 break;
                         }
@@ -189,7 +190,8 @@ namespace AudioMixer
 
         public void setSelected(Boolean selected)
         {
-            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected), null, true);
+            Boolean muted = audioSession.session.SimpleAudioVolume.Mute;
+            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
         }
 
         public void SetControlType(Utils.ControlType controlType)
