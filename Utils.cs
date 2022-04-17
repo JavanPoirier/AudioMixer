@@ -10,11 +10,20 @@ using NAudio.CoreAudioApi.Interfaces;
 using BarRaider.SdTools;
 using System.Drawing.Text;
 using System.Runtime.CompilerServices;
+using System.IO;
 
 namespace AudioMixer
 {
     public static class Utils
     {
+        public enum ControlType
+        {
+            Application,
+            VolumeUp,
+            VolumeDown,
+            Mute
+        }
+
         private static Font font = new Font("Arial", 28F, FontStyle.Regular);
         private static FontFamily fontFamily = new FontFamily("Arial");
 
@@ -55,10 +64,9 @@ namespace AudioMixer
 
                 GraphicsPath path = new GraphicsPath();
                 float emSize = graph.DpiY * font.Size / 72;
-                path.AddString($"{volume * 100}%", fontFamily, (int)FontStyle.Regular, emSize, new Rectangle(0, 0, 144, 144), stringFormat);
+                path.AddString($"{Math.Round(volume, 2) * 100}%", fontFamily, (int)FontStyle.Regular, emSize, new Rectangle(0, 0, 144, 144), stringFormat);
 
-                Pen pen = new Pen(Brushes.Black);
-                pen.Width = 10F;
+                Pen pen = new Pen(Brushes.Black, 10F);
                 graph.DrawPath(pen, path);
                 graph.FillPath(Brushes.White, path);
 
@@ -68,16 +76,61 @@ namespace AudioMixer
 
         //public static Image CreateAppHighlight() { }
 
-        public static Image CreateAppKey(Image iconImage, Image volumeImage) 
+        public static Image CreateAppKey(Image iconImage, Image volumeImage, Boolean selected)
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
             using (Graphics graph = Graphics.FromImage(clone))
             {
+                int contentSize = selected ? 120 : 144;
                 graph.DrawImage(iconImage, new Rectangle(0, 0, 144, 144));
                 graph.DrawImage(volumeImage, new Rectangle(0, 0, 144, 144));
+
+                if (selected)
+                {
+                    graph.DrawRectangle(new Pen(Brushes.White, 10F), new Rectangle(0, 0, 144, 144));
+                }
+
                 return clone;
             }
+        }
+
+        public static Image CreateMuteKey()
+        {
+            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
+
+            Image muteImage = Image.FromFile(@"Images\Mute.png");
+            using (Graphics graph = Graphics.FromImage(clone))
+            {
+                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+            }
+
+            return clone;
+        }
+
+        public static Image CreateVolumeUpKey()
+        {
+            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
+
+            Image muteImage = Image.FromFile(@"Images\VolumeHigh.png");
+            using (Graphics graph = Graphics.FromImage(clone))
+            {
+                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+            }
+
+            return clone;
+        }
+        public static Image CreateVolumeDownKey()
+        {
+            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
+
+            Image muteImage = Image.FromFile(@"Images\VolumeLow.png");
+            using (Graphics graph = Graphics.FromImage(clone))
+            {
+                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+            }
+
+            return clone;
         }
     }
 }

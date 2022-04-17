@@ -1,10 +1,8 @@
 ﻿using BarRaider.SdTools;
-using Gma.System.MouseKeyHook;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Forms;
 
 namespace AudioMixer
 {
@@ -17,6 +15,29 @@ namespace AudioMixer
         public List<PluginAction> pluginActions = new List<PluginAction>();
         public List<string> blacklist = new List<string>();
         public List<string> whitelist = new List<string>();
+        private PluginAction selectedAction;
+
+        public PluginAction SelectedAction
+        {
+            get { return selectedAction; }
+            set
+            {
+                if (value == selectedAction)
+                {
+                    selectedAction.setSelected(false);
+                    selectedAction = null;
+                } else
+                {
+                    // Reset previous selected action
+                    if (selectedAction != null) selectedAction.setSelected(false);
+
+                    selectedAction = value;
+                    if (selectedAction != null) selectedAction.setSelected(true);
+                }
+             
+                SetActionControls();
+            }
+        }
 
         public static PluginController Instance
         {
@@ -88,6 +109,28 @@ namespace AudioMixer
             {
                 pluginAction.UpdateKey();
             });
+        }
+
+        private void SetActionControls()
+        {
+            if (selectedAction != null)
+            {
+                List<PluginAction> controls = pluginActions.FindAll((pluginAction) => pluginAction != this.selectedAction);
+
+                if (controls.Count >= 3)
+                {
+                    controls[0].SetControlType(Utils.ControlType.Mute);
+                    controls[1].SetControlType(Utils.ControlType.VolumeDown);
+                    controls[2].SetControlType(Utils.ControlType.VolumeUp);
+                } else
+                {
+                    Logger.Instance.LogMessage(TracingLevel.WARN, "Not enough plugin actions available to place controls.");
+                }
+            } else
+            {
+                // Reset all actions.
+                pluginActions.ForEach(pluginAction => pluginAction.SetControlType(Utils.ControlType.Application));
+            }
         }
 
         public void Dispose()

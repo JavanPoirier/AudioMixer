@@ -20,3 +20,5 @@ rmdir %APPDATA%\Elgato\StreamDeck\Plugins\%2.sdPlugin /s /q
 START "" %STREAM_DECK_FILE%
 timeout /t %STREAM_DECK_LOAD_TIMEOUT%
 %OUTPUT_DIR%\%2.streamDeckPlugin
+
+EXIT /b 0

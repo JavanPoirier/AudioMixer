@@ -10,8 +10,8 @@
           "FontSize": "12"
         }
       ],
-      "SupportedInMultiActions": false,
-      "Tooltip": "",
+      "SupportedInMultiActions": true,
+      "Tooltip": "This is used as application and/or control button.",
       "UUID": "com.javanpoirier.audiomixer.application",
       "PropertyInspectorPath": "PropertyInspector/PluginActionPI.html"
     }

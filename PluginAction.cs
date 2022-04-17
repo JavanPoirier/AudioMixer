@@ -1,4 +1,5 @@
 ﻿using BarRaider.SdTools;
+using NAudio.CoreAudioApi;
 using Newtonsoft.Json.Linq;
 using streamdeck_client_csharp;
 using System;
@@ -19,11 +20,13 @@ namespace AudioMixer
         private bool timerElapsed = false;
         private Image iconImage;
         private Image volumeImage;
-        private bool toggled;
+        private Utils.ControlType controlType = Utils.ControlType.Application;
 
         public readonly SDConnection connection;
         public readonly KeyCoordinates keyCoordinates;
         public AudioSession audioSession;
+
+        private float volumeStep = 0.1F;
 
         public PluginAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
@@ -65,13 +68,14 @@ namespace AudioMixer
 
             if (audioSession != null)
             {
+                Boolean selected = pluginController.SelectedAction == this;
+
                 audioSession.SessionDisconnnected += SessionDisconnected;
                 audioSession.VolumeChanged += VolumeChanged;
 
                 iconImage = Utils.CreateIconImage(audioSession.processIcon);
                 volumeImage = Utils.CreateVolumeImage(audioSession.session.SimpleAudioVolume.Volume);
-
-                connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage), null, true);
+                connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected), null, true);
             }
             else
             {
@@ -93,8 +97,9 @@ namespace AudioMixer
 
         void VolumeChanged(object sender, EventArgs e)
         {
+            Boolean selected = pluginController.SelectedAction == this;
             volumeImage = Utils.CreateVolumeImage(audioSession.session.SimpleAudioVolume.Volume);
-            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage), null, true);
+            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected), null, true);
         }
 
         public override void Dispose()
@@ -128,6 +133,7 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
+            // If the timer of 3 seconds has passed.
             if (timerElapsed)
             {
                 pluginController.blacklist.Add(audioSession.session.GetSessionIdentifier);
@@ -135,13 +141,74 @@ namespace AudioMixer
                 pluginController.UpdateActions();
             } else
             {
-                if (toggled)
+
+                if (controlType == Utils.ControlType.Application)
                 {
-                    toggled = false;
+                    pluginController.SelectedAction = this;
                 } else
                 {
-                    toggled = true;
+                    try
+                    {
+                        SimpleAudioVolume volume = pluginController.SelectedAction.audioSession.session.SimpleAudioVolume;
+                        if (volume == null)
+                        {
+                            throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
+                        }
+
+                        float newVolume = 1F;
+                        switch (controlType)
+                        {
+                            case Utils.ControlType.Mute:
+                                volume.Mute = !volume.Mute;
+                                break;
+                            case Utils.ControlType.VolumeDown:
+                                if (volume.Mute) volume.Mute = !volume.Mute;
+                                else
+                                {
+                                    newVolume = volume.Volume - volumeStep;
+                                    volume.Volume = newVolume < 0F ? 0F : newVolume; 
+                                }
+                                break;
+                            case Utils.ControlType.VolumeUp:
+                                if (volume.Mute) volume.Mute = !volume.Mute;
+                                else
+                                {
+                                    newVolume = volume.Volume + volumeStep;
+                                    volume.Volume = newVolume > 1F ? 1F : newVolume;
+                                   
+                                }
+                                break;
+                        }
+                    } catch (Exception ex)
+                    {
+                        Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
+                    }
                 }
+            }
+        }
+
+        public void setSelected(Boolean selected)
+        {
+            connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected), null, true);
+        }
+
+        public void SetControlType(Utils.ControlType controlType)
+        {
+            this.controlType = controlType;
+            switch(controlType)
+            {
+                case Utils.ControlType.Mute:
+                    connection.SetImageAsync(Utils.CreateMuteKey());
+                    break;
+                case Utils.ControlType.VolumeDown:
+                    connection.SetImageAsync(Utils.CreateVolumeDownKey());
+                    break;
+                case Utils.ControlType.VolumeUp:
+                    connection.SetImageAsync(Utils.CreateVolumeUpKey());
+                    break;
+                default:
+                    UpdateKey();
+                    break;
             }
         }
 

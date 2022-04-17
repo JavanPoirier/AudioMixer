@@ -9,13 +9,13 @@ namespace AudioMixer
 {
     class GlobalSettings
     {
-        [JsonProperty(PropertyName = "myFirstField")]
-        public String MyFirstField { get; set; }
+        [JsonProperty(PropertyName = "volumeStep")]
+        public float VolumeStep { get; set; } = 10F;
 
-        [JsonProperty(PropertyName = "mySecondFile")]
-        public bool MySecondField { get; set; }
+        [JsonProperty(PropertyName = "blacklist")]
+        public string[] Blacklist { get; set; }
 
-        [JsonProperty(PropertyName = "keys")]
-        public string[] Keys { get; set; }
+        [JsonProperty(PropertyName = "whitelist")]
+        public string[] Whitelist { get; set; }
     }
 }
