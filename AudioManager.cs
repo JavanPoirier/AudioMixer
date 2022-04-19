@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace AudioMixer
 {
-    public class AudioManager
+    public class AudioManager 
     {
         private PluginController pluginController;
         private MMDevice device;
@@ -22,6 +22,7 @@ namespace AudioMixer
             var sessions = device.AudioSessionManager.Sessions;
             if (sessions == null)
             {
+
             }
             else
             {
@@ -30,15 +31,17 @@ namespace AudioMixer
                     var session = sessions[i];
                     if (!session.IsSystemSoundsSession && ProcessExists(session.GetProcessID))
                     {
-                        if (!pluginController.blacklist.Contains(session.GetSessionIdentifier)) {
-                            var audioSession = new AudioSession(device, session);
-                            audioSessions.Add(audioSession);
-                        }
+                        AddAudioSession(session);
                     }
                 }
             }
 
             device.AudioSessionManager.OnSessionCreated += AddAudioSession;
+        }
+
+        private void Dispose()
+        {
+            device.AudioSessionManager.OnSessionCreated -= AddAudioSession;
         }
 
         bool ProcessExists(uint processId)
@@ -54,15 +57,33 @@ namespace AudioMixer
             }
         }
 
-        void AddAudioSession(object sender, IAudioSessionControl newSession)
+        void AddAudioSession(AudioSessionControl session)
         {
-            var session = new AudioSessionControl(newSession);
-            if (!pluginController.blacklist.Contains(session.GetSessionIdentifier)) {
-                var audioSession = new AudioSession(device, session);
+            var test = session.IsSystemSoundsSession;
+            // TODO: Still add them to session list, just add a blacklist property.
+            if (!pluginController.blacklist.Contains(session.GetSessionIdentifier))
+            {
+                var audioSession = new AudioSession(pluginController, device, session);
                 audioSessions.Add(audioSession);
-            }
 
-            PluginController.Instance.UpdateActions();
+                // Check if session has a static application action.
+                var applicationAction = pluginController.applicationActions.Find(action => action.settings?.StaticApplication?.name == audioSession.name);
+                if (applicationAction != null)
+                {
+                    audioSession.actionId = applicationAction.actionId;
+                    applicationAction.SetAudioSession();
+                } else
+                {
+                    pluginController.UpdateActions();
+                }
+            }
+        }
+
+        void AddAudioSession(object sender, IAudioSessionControl audioSessionControl)
+        {
+            // TODO: Still add them to session list, just add a blacklist property.
+            var session = new AudioSessionControl(audioSessionControl);
+            this.AddAudioSession(session);
         }
     }
 }

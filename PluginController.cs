@@ -6,33 +6,33 @@ using System.Linq;
 
 namespace AudioMixer
 {
-    public class PluginController 
+    public class PluginController : IDisposable
     {
         private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
-        private GlobalSettings globalSettings;
 
         public AudioManager audioManager;
-        public List<PluginAction> pluginActions = new List<PluginAction>();
+        public List<ApplicationAction> applicationActions = new List<ApplicationAction>();
         public List<string> blacklist = new List<string>();
         public List<string> whitelist = new List<string>();
-        private PluginAction selectedAction;
+        private ApplicationAction selectedAction;
+        //private GlobalSettings globalSettings;
 
-        public PluginAction SelectedAction
+        public ApplicationAction SelectedAction
         {
             get { return selectedAction; }
             set
             {
                 if (value == selectedAction)
                 {
-                    selectedAction.setSelected(false);
+                    selectedAction.SetSelected(false);
                     selectedAction = null;
                 } else
                 {
                     // Reset previous selected action
-                    if (selectedAction != null) selectedAction.setSelected(false);
+                    if (selectedAction != null) selectedAction.SetSelected(false);
 
                     selectedAction = value;
-                    if (selectedAction != null) selectedAction.setSelected(true);
+                    if (selectedAction != null) selectedAction.SetSelected(true);
                 }
              
                 SetActionControls();
@@ -50,72 +50,46 @@ namespace AudioMixer
         private PluginController()
         {
             Logger.Instance.LogMessage(TracingLevel.DEBUG, $"PluginController: {GetHashCode()}");
-            GlobalSettingsManager.Instance.OnReceivedGlobalSettings += GlobalSettingsReceived;
-            GlobalSettingsManager.Instance.RequestGlobalSettings();
-
             audioManager = new AudioManager(this);
+
+            GlobalSettingsManager.Instance.OnReceivedGlobalSettings += OnReceivedGlobalSettings;
+            GlobalSettingsManager.Instance.RequestGlobalSettings();
         }
 
-        private void GlobalSettingsReceived(object sender, ReceivedGlobalSettingsPayload globalSettingsPayload)
+
+        public void Dispose()
         {
-            // Global Settings exist
-            if (globalSettingsPayload?.Settings != null && globalSettingsPayload.Settings.Count > 0)
+            GlobalSettingsManager.Instance.OnReceivedGlobalSettings -= OnReceivedGlobalSettings;
+        }
+
+        public void AddAction(ApplicationAction applicationAction)
+        {
+            applicationActions.Add(applicationAction);
+
+            // If a static application action was added, update all dynamic application actions.
+            if (applicationAction.settings.StaticApplication == null)
             {
-                globalSettings = globalSettingsPayload.Settings.ToObject<GlobalSettings>();
-
-                // global now has all the settings
-                // Console.Writeline(global.MyFirstField);
-
-            }
-            else // Global settings do not exist, create new one and SAVE it
-            {
-                Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                globalSettings = new GlobalSettings();
-                SetGlobalSettings();
+                UpdateActions();
             }
         }
-        private void SetGlobalSettings()
-        {
-            pluginActions.FirstOrDefault().connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
-        }
 
-        public void AddAction(PluginAction pluginAction)
+        public void RemoveAction(ApplicationAction pluginAction)
         {
-            // Find where the key should live.
-            var newPosValue = pluginActions.Count();
-            var posValue = Int16.Parse(pluginAction.keyCoordinates.Row.ToString() + pluginAction.keyCoordinates.Column.ToString());
-            foreach (var _pluginAction in pluginActions.Select((value, index) => new { value, index }))
-            {
-                var _posValue = Int16.Parse(_pluginAction.value.keyCoordinates.Row.ToString() + _pluginAction.value.keyCoordinates.Column.ToString());
-                if (posValue <= _posValue)
-                {
-                    newPosValue = _pluginAction.index;
-                    break;
-                }
-            }
-            pluginActions.Insert(newPosValue, pluginAction);
-            this.UpdateActions();
-        }
-
-        public void RemoveAction(PluginAction pluginAction)
-        {
-            pluginActions.Remove(pluginAction);
-            this.UpdateActions();
+            applicationActions.Remove(pluginAction);
+            UpdateActions();
         }
 
         public void UpdateActions()
         {
-            pluginActions.ForEach((pluginAction) =>
-            {
-                pluginAction.UpdateKey();
-            });
+            var dynamicApplicationActions = applicationActions.FindAll(action => action.settings.StaticApplication == null);
+            dynamicApplicationActions.ForEach(action => action.SetAudioSession());
         }
 
         private void SetActionControls()
         {
             if (selectedAction != null)
             {
-                List<PluginAction> controls = pluginActions.FindAll((pluginAction) => pluginAction != this.selectedAction);
+                List<ApplicationAction> controls = applicationActions.FindAll((pluginAction) => pluginAction != this.selectedAction);
 
                 if (controls.Count >= 3)
                 {
@@ -129,13 +103,33 @@ namespace AudioMixer
             } else
             {
                 // Reset all actions.
-                pluginActions.ForEach(pluginAction => pluginAction.SetControlType(Utils.ControlType.Application));
+                applicationActions.ForEach(pluginAction => pluginAction.SetControlType(Utils.ControlType.Application));
             }
         }
 
-        public void Dispose()
+        private void OnReceivedGlobalSettings(object sender, ReceivedGlobalSettingsPayload payload)
         {
-            GlobalSettingsManager.Instance.OnReceivedGlobalSettings -= GlobalSettingsReceived;
+            //// Global Settings exist
+            //if (payload?.Settings != null && payload.Settings.Count > 0)
+            //{
+            //    globalSettings = payload.Settings.ToObject<GlobalSettings>();
+
+            //    // global now has all the settings
+            //    // Console.Writeline(global.MyFirstField);
+
+            //}
+            //else // Global settings do not exist, create new one and SAVE it
+            //{
+            //    Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
+            //    globalSettings = new GlobalSettings();
+            //    SetGlobalSettings();
+            //}
         }
+
+        //// Saves the global object back the global settings
+        //private void SetGlobalSettings()
+        //{
+        //    Connection.SetGlobalSettingsAsync(JObject.FromObject(global));
+        //}
     }
 }

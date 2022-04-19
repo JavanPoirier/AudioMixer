@@ -1,0 +1,119 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,minimal-ui,viewport-fit=cover">
+    <meta name=apple-mobile-web-app-capable content=yes>
+    <meta name=apple-mobile-web-app-status-bar-style content=black>
+    <title>AudioMixer Settings</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdpi.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@master/src/rangeTooltip.css">
+    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdtools.common.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@master/src/rangeTooltip.js"></script>
+    <script src="ApplicationAction.js"></script>
+</head>
+<body>
+    <div class="sdpi-wrapper">
+        <!--  -->
+        <div class="sdpi-item" id="dvStaticApp">
+            <div class="sdpi-item-label">Application</div>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticApplications" sdListTextProperty="name" sdListValueProperty="name" sdValueField="staticApplicationName" oninput="setStaticApplication()"></select>
+            <button class="sdpi-item-value max20" onclick="toggleFromWhitelist()">Clear</button>
+        </div>
+        <div class="sdpi-item">
+            <details class="message question">
+                <summary>Statically set this key to a specific application. (Optional)</summary>
+            </details>
+        </div>
+        <div class="sdpi-heading">Global Settings</div>
+
+        <!--  -->
+        <div type="range" class="sdpi-item sdShowTooltip" id="dvVolumeStep">
+            <div class="sdpi-item-label">Volume Step</div>
+            <div class="sdpi-item-value">
+                <span class="clickable" value="1">1</span>
+                <input type="range" min="1" max="25" data-suffix=" +/-" value="10" class="sdProperty" oninput="setSettings()" id="volumeStep">
+                <span class="clickable" value="25">25</span>
+                <label for="volumeStep" class="rangeLabel"></label>
+            </div>
+        </div>
+        <div class="sdpi-info-label hidden" style="top: -1000px;" value="">Tooltip</div>
+        <div class="sdpi-item">
+            <span class="titleAlignedSmall" style="padding-left: 100px !important;">(Use left/right keys for added precision)</span>
+        </div>
+
+        <!--  -->
+        <div class="sdpi-item" id="dvInlineControls">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <div class="sdpi-item-value">
+                <input id="inlineControls" type="checkbox" value="" class="sdProperty sdCheckbox" oninput="setSettings()">
+                <label for="inlineControls" class="sdpi-item-label"><span></span>Show controls inline</label>
+            </div>
+        </div>
+        <div class="sdpi-item">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <details class="sdpi-item-value">
+                <summary>What are inline controls?</summary>
+                <p>
+                    Inline controls have application placeholders become the mute, volume up and volume down once an application has been selected.
+                </p>
+                <p>
+                    This is ideal for 2x3 (small) stream decks,
+                    however it requires at least 4 application placeholders.
+                </p>
+            </details>
+        </div>
+
+        <!--  -->
+        <div type="list" class="sdpi-item list" id="dvBlacklist" style="min-height:50px;max-height:100px;">
+            <div class="sdpi-item-label">Blacklist</div>
+            <ol class="sdpi-item-value" id="blacklist">
+                <li>Milk</li>
+                <li>Bread</li>
+                <li>Chocolate</li>
+                <li>More chocolate</li>
+            </ol>
+        </div>
+        <div class="sdpi-item" id="dvBlacklist">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplications" sdListTextProperty="name" sdListValueProperty="name" sdValueField="blacklistApplicationName"></select>
+            <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
+        </div>
+
+        <!--  -->
+        <div type="list" class="sdpi-item list" id="dvWhitelist" style="min-height:50px;max-height:100px;margin-top:10px">
+            <div class="sdpi-item-label">Whitelist</div>
+            <ol class="sdpi-item-value" id="whitelist">
+                <li>Milk</li>
+                <li>Bread</li>
+                <li>Chocolate</li>
+                <li>More chocolate</li>
+            </ol>
+        </div>
+        <div class="sdpi-item" id="dvBlacklist">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplications" sdListTextProperty="name" sdListValueProperty="name" sdValueField="blacklistApplicationName"></select>
+            <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
+        </div>
+        <!--<div class="sdpi-item" id="dvWhitelist">
+        <div class="sdpi-item-label" style="font-size:0"></div>
+        <select class="sdpi-item-value select sdProperty sdList" id="whitelistApplications" sdListTextProperty="nameWithPID" sdListValueProperty="nameWithPID" sdValueField="whitelistApplicationNameWithPID"></select>
+        <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
+    </div>-->
+        <!--  -->
+        <div class="sdpi-item" id="dvRefresh" style="margin-top:10px">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <button class="sdpi-item-value" onclick="refreshApplications()">Refresh Applications</button>
+        </div>
+
+        <!--  -->
+        <hr />
+        <div class="sdpi-item">
+            <div class="sdpi-item-label">Controls</div>
+            <details class="sdpi-item-value">
+                <p>You can long press an application key at anytime to add it to your blacklist.</p>
+            </details>
+        </div>
+    </div>
+</body>
+</html>

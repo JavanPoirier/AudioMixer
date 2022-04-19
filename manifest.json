@@ -13,22 +13,22 @@
       "SupportedInMultiActions": true,
       "Tooltip": "This is used as application and/or control button.",
       "UUID": "com.javanpoirier.audiomixer.application",
-      "PropertyInspectorPath": "PropertyInspector/PluginActionPI.html"
+      "PropertyInspectorPath": "PropertyInspector/ApplicationAction.html"
     },
     {
-      "Icon": "Images/Mute",
+      "Icon": "Images/VolumeMute",
       "Name": "Mute",
       "States": [
         {
-          "Image": "Images/Mute",
+          "Image": "Images/VolumeMute",
           "TitleAlignment": "top",
           "FontSize": "12"
         }
       ],
       "SupportedInMultiActions": true,
       "Tooltip": "This is used as application and/or control button.",
-      "UUID": "com.javanpoirier.audiomixer.mute",
-      "PropertyInspectorPath": "PropertyInspector/PluginActionPI.html"
+      "UUID": "com.javanpoirier.audiomixer.volumemute",
+      "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     },
     {
       "Icon": "Images/VolumeLow",
@@ -43,7 +43,7 @@
       "SupportedInMultiActions": true,
       "Tooltip": "This is used as application and/or control button.",
       "UUID": "com.javanpoirier.audiomixer.volumeDown",
-      "PropertyInspectorPath": "PropertyInspector/PluginActionPI.html"
+      "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     },
     {
       "Icon": "Images/VolumeHigh",
@@ -58,7 +58,7 @@
       "SupportedInMultiActions": true,
       "Tooltip": "This is used as application and/or control button.",
       "UUID": "com.javanpoirier.audiomixer.volumeUp",
-      "PropertyInspectorPath": "PropertyInspector/PluginActionPI.html"
+      "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     }
   ],
   "Author": "Javan Poirier",

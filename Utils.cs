@@ -1,15 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Drawing;
-using System.Threading.Tasks;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using NAudio.CoreAudioApi.Interfaces;
-using BarRaider.SdTools;
 using System.Drawing.Text;
-using System.Runtime.CompilerServices;
 using System.IO;
 
 namespace AudioMixer
@@ -74,35 +67,45 @@ namespace AudioMixer
             };
         }
 
-        //public static Image CreateAppHighlight() { }
-
-        public static Image CreateAppKey(Image iconImage, Image volumeImage, Boolean selected, Boolean muted)
+        public static Image CreateAppKey(Image iconImage, Image volumeImage, Boolean selected, Boolean muted, Boolean exists = true)
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
             using (Graphics graph = Graphics.FromImage(clone))
             {
-                int contentSize = selected ? 120 : 144;
-                graph.DrawImage(iconImage, new Rectangle(0, 0, 144, 144));
-                graph.DrawImage(volumeImage, new Rectangle(0, 0, 144, 144));
+                graph.FillRectangle(Brushes.Black, new Rectangle(0, 0, 144, 144));
 
-                if (muted)
+                // Scale application icon to fit inside selection box, if selected.
+                Rectangle rect = selected ? new Rectangle(5, 5, 129, 129) : new Rectangle(0, 0, 144, 144);
+
+                if (exists)
+                {
+                    graph.DrawImage(iconImage, rect);
+                    graph.DrawImage(volumeImage, rect);
+                } else
+                {
+                    graph.DrawImage(GrauwertBild(new Bitmap(iconImage)), rect);
+                }
+             
+                if (exists && muted)
                 {
                     Graphics line = Graphics.FromImage(clone);
                     GraphicsPath linePath = new GraphicsPath();
                     linePath.AddLines(new Point[] {
-                    new Point(20, 134),
-                    new Point(10, 124),
-                    new Point(124, 10),
-                    new Point(134, 20)
-                });
-                    line.DrawPath(new Pen(Brushes.Black, 12F), linePath);
+                        new Point(20, 134),
+                        new Point(10, 124),
+                        new Point(124, 10),
+                        new Point(134, 20)
+                    });
+                    //line.DrawPath(new Pen(Brushes.Black, 15F), linePath);
                     line.FillPath(Brushes.Red, linePath);
                 }
 
+                // Apply selection box.
                 if (selected)
                 {
-                    graph.DrawRectangle(new Pen(Brushes.White, 10F), new Rectangle(0, 0, 144, 144));
+                    GraphicsPath rectPath = RoundedRect(new Rectangle(5, 5, 134, 134), 15);
+                    graph.DrawPath(new Pen(Brushes.White, 5F), rectPath);
                 }
 
                 return clone;
@@ -113,7 +116,7 @@ namespace AudioMixer
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            Image muteImage = Image.FromFile(@"Images\Mute.png");
+            Image muteImage = Image.FromFile(@"Images\VolumeMute.png");
             using (Graphics graph = Graphics.FromImage(clone))
             {
                 graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
@@ -145,6 +148,98 @@ namespace AudioMixer
             }
 
             return clone;
+        }
+        private static Image ScaleImage(Image image, int maxWidth, int maxHeight)
+        {
+            var ratioX = (double)maxWidth / image.Width;
+            var ratioY = (double)maxHeight / image.Height;
+            var ratio = Math.Min(ratioX, ratioY);
+
+            var newWidth = (int)(image.Width * ratio);
+            var newHeight = (int)(image.Height * ratio);
+
+            var newImage = new Bitmap(maxWidth, maxHeight);
+            using (var graphics = Graphics.FromImage(newImage))
+            {
+                // Calculate x and y which center the image
+                int y = (maxHeight / 2) - newHeight / 2;
+                int x = (maxWidth / 2) - newWidth / 2;
+
+                // Draw image on x and y with newWidth and newHeight
+                graphics.DrawImage(image, x, y, newWidth, newHeight);
+            }
+
+            return newImage;
+        }
+        private static GraphicsPath RoundedRect(Rectangle bounds, int radius)
+        {
+            int diameter = radius * 2;
+            Size size = new Size(diameter, diameter);
+            Rectangle arc = new Rectangle(bounds.Location, size);
+            GraphicsPath path = new GraphicsPath();
+
+            if (radius == 0)
+            {
+                path.AddRectangle(bounds);
+                return path;
+            }
+
+            // top left arc  
+            path.AddArc(arc, 180, 90);
+
+            // top right arc  
+            arc.X = bounds.Right - diameter;
+            path.AddArc(arc, 270, 90);
+
+            // bottom right arc  
+            arc.Y = bounds.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+
+            // bottom left arc 
+            arc.X = bounds.Left;
+            path.AddArc(arc, 90, 90);
+
+            path.CloseFigure();
+            return path;
+        }
+
+        public static Bitmap GrauwertBild(Bitmap input)
+        {
+            Bitmap greyscale = new Bitmap(input.Width, input.Height);
+            for (int x = 0; x < input.Width; x++)
+            {
+                for (int y = 0; y < input.Height; y++)
+                {
+                    Color pixelColor = input.GetPixel(x, y);
+                    //  0.3 · r + 0.59 · g + 0.11 · b
+                    int grey = (int)(pixelColor.R * 0.3 + pixelColor.G * 0.59 + pixelColor.B * 0.11);
+                    greyscale.SetPixel(x, y, Color.FromArgb(pixelColor.A, grey, grey, grey));
+                }
+            }
+            return greyscale;
+        }
+
+        public static String BitmapToBase64(Bitmap newImage)
+        {
+            Bitmap bImage = newImage;  // Your Bitmap Image
+            System.IO.MemoryStream ms = new MemoryStream();
+            bImage.Save(ms, ImageFormat.Png);
+            byte[] byteImage = ms.ToArray();
+            var SigBase64 = Convert.ToBase64String(byteImage);
+            return SigBase64;
+        }
+
+        public static Bitmap Base64ToBitmap(string base64String)
+        {
+            Bitmap bmpReturn = null;
+            byte[] byteBuffer = Convert.FromBase64String(base64String);
+            MemoryStream memoryStream = new MemoryStream(byteBuffer);
+            memoryStream.Position = 0;
+            bmpReturn = (Bitmap)Bitmap.FromStream(memoryStream);
+            memoryStream.Close();
+            memoryStream = null;
+            byteBuffer = null;
+            return bmpReturn;
         }
     }
 }

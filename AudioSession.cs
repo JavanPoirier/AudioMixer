@@ -1,46 +1,75 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Diagnostics;
-using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using System.Drawing;
 using NAudio.CoreAudioApi.Interfaces;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using BarRaider.SdTools;
 
 namespace AudioMixer
 {
-    public class AudioSession : IAudioSessionEventsHandler
+    public class AudioSessionSetting
     {
+        public readonly string name;
+        public string processIcon { get; private set; }
+
+        public AudioSessionSetting(AudioSession audioSession)
+        {
+            name = audioSession.name;
+            processIcon = Utils.BitmapToBase64(audioSession.processIcon);
+        }
+    }
+
+    public class AudioSession : IAudioSessionEventsHandler, IDisposable
+    {
+        private PluginController pluginController;
         private MMDevice device;
         public readonly AudioSessionControl session;
 
         public event EventHandler SessionDisconnnected;
         public event EventHandler VolumeChanged;
 
-        public readonly string processName;
+        public string actionId;
+        public readonly string name;
         public Bitmap processIcon { get; private set; }
 
-        public AudioSession(MMDevice device, AudioSessionControl session)
+        public AudioSession(PluginController pluginController, MMDevice device, AudioSessionControl session)
         {
+            this.pluginController = pluginController;
             this.device = device;
             this.session = session;
 
-            Process process = Process.GetProcessById((int)session.GetProcessID);
-            processName = process.ProcessName;
-
             try
             {
+                Process process = Process.GetProcessById((int)session.GetProcessID);
+
+                name = process.ProcessName;
                 processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
+
                 session.RegisterEventClient(this);
-            }
-            catch (Exception e)
+            } catch (Exception ex)
             {
-                Logger.Instance.LogMessage(TracingLevel.ERROR, "This application must be run as an administrator.");
+                switch (ex.GetType().Name)
+                {
+                    case "Exception":
+                        this.Dispose();
+                        break;
+                    default:
+                        Logger.Instance.LogMessage(TracingLevel.ERROR, ex.GetType().Name);
+                        Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+
+                        // TODO: Find case.
+                        //Logger.Instance.LogMessage(TracingLevel.ERROR, "This application must be run as an administrator.");
+                        throw;
+                }
             }
+        }
+
+        public void Dispose()
+        {
+            this.pluginController.audioManager.audioSessions.Remove(this);
+
+            var applicationActions = this.pluginController.applicationActions.FindAll(actions => actions.actionId == this.actionId);
+            applicationActions.ForEach(action => action.SetAudioSession());
         }
 
         public void OnVolumeChanged(float volume, bool isMuted)
@@ -48,7 +77,7 @@ namespace AudioMixer
             if (VolumeChanged != null)
                 VolumeChanged(this, null);
         }
-
+        
         public void OnDisplayNameChanged(string displayName)
         {
         }
@@ -67,10 +96,16 @@ namespace AudioMixer
 
         public void OnStateChanged(AudioSessionState e)
         {
-            if (e == AudioSessionState.AudioSessionStateExpired)
+            switch (e)
             {
-                if (SessionDisconnnected != null)
-                    SessionDisconnnected(this, null);
+                case AudioSessionState.AudioSessionStateExpired:
+                    this.Dispose();
+                    break;
+                case AudioSessionState.AudioSessionStateInactive:
+                    this.Dispose();
+                    break;
+                default:
+                    break;
             }
         }
 
