@@ -17,7 +17,7 @@
         <!--  -->
         <div class="sdpi-item" id="dvStaticApp">
             <div class="sdpi-item-label">Application</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="staticApplications" sdListTextProperty="name" sdListValueProperty="name" sdValueField="staticApplicationName" oninput="setStaticApplication()"></select>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApplication()"></select>
             <button class="sdpi-item-value max20" onclick="toggleFromWhitelist()">Clear</button>
         </div>
         <div class="sdpi-item">
@@ -44,10 +44,10 @@
 
         <!--  -->
         <div class="sdpi-item" id="dvInlineControls">
-            <div class="sdpi-item-label" style="font-size:0"></div>
+            <div class="sdpi-item-label">Inline Controls</div>
             <div class="sdpi-item-value">
                 <input id="inlineControls" type="checkbox" value="" class="sdProperty sdCheckbox" oninput="setSettings()">
-                <label for="inlineControls" class="sdpi-item-label"><span></span>Show controls inline</label>
+                <label for="inlineControls" class="sdpi-item-label"><span></span>Show inline controls</label>
             </div>
         </div>
         <div class="sdpi-item">

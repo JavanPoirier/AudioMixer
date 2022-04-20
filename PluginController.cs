@@ -56,7 +56,6 @@ namespace AudioMixer
             GlobalSettingsManager.Instance.RequestGlobalSettings();
         }
 
-
         public void Dispose()
         {
             GlobalSettingsManager.Instance.OnReceivedGlobalSettings -= OnReceivedGlobalSettings;

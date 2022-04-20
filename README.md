@@ -30,6 +30,9 @@ a single applicaiton. The Stream Deck application placeholders will update accor
 		You can have multiple static applications, just not the same application. This is a limitation of how the code was written. 
 		This shouldn't be an issue for most, let me know if it is.
 
+	- A single process with multiple audio steams are conglomerated.
+		This is due to the fact there is no way to discriminate between them during the applications lifecycle.
+
 ### Known Issues
 	- Application's not showing/disapearing when launched/closed.
 		While testing I noticed this occuring with some apps, notably Spotify. Some apps will only notify the OS

@@ -9,28 +9,41 @@ namespace AudioMixer
 {
     public class AudioSessionSetting
     {
-        public readonly string name;
+        public readonly string processName;
         public string processIcon { get; private set; }
 
         public AudioSessionSetting(AudioSession audioSession)
         {
-            name = audioSession.name;
+            processName = audioSession.processName;
             processIcon = Utils.BitmapToBase64(audioSession.processIcon);
         }
     }
 
     public class AudioSession : IAudioSessionEventsHandler, IDisposable
     {
+        public class VolumeChangedEventArgs
+        {
+            public float volume;
+            public bool isMuted;
+
+            public VolumeChangedEventArgs(float volume, bool isMuted)
+            {
+                this.volume = volume;
+                this.isMuted = isMuted;
+            }
+        }
+
         private PluginController pluginController;
         private MMDevice device;
-        public readonly AudioSessionControl session;
-
-        public event EventHandler SessionDisconnnected;
-        public event EventHandler VolumeChanged;
 
         public string actionId;
-        public readonly string name;
+        public readonly int processId;
+        public readonly string processName;
+        public readonly AudioSessionControl session;
         public Bitmap processIcon { get; private set; }
+
+        public event EventHandler SessionDisconnnected;
+        public event EventHandler<VolumeChangedEventArgs> VolumeChanged;
 
         public AudioSession(PluginController pluginController, MMDevice device, AudioSessionControl session)
         {
@@ -38,11 +51,11 @@ namespace AudioMixer
             this.device = device;
             this.session = session;
 
-            try
-            {
+            try {
                 Process process = Process.GetProcessById((int)session.GetProcessID);
 
-                name = process.ProcessName;
+                processId = process.Id;
+                processName = process.ProcessName;
                 processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
 
                 session.RegisterEventClient(this);
@@ -68,14 +81,17 @@ namespace AudioMixer
         {
             this.pluginController.audioManager.audioSessions.Remove(this);
 
-            var applicationActions = this.pluginController.applicationActions.FindAll(actions => actions.actionId == this.actionId);
+            var applicationActions = this.pluginController.applicationActions.FindAll(actions => actions.processName == this.processName);
             applicationActions.ForEach(action => action.SetAudioSession());
         }
 
         public void OnVolumeChanged(float volume, bool isMuted)
         {
             if (VolumeChanged != null)
-                VolumeChanged(this, null);
+            {
+                var e = new VolumeChangedEventArgs(volume, isMuted);
+                VolumeChanged(this, e);
+            }
         }
         
         public void OnDisplayNameChanged(string displayName)
@@ -99,10 +115,12 @@ namespace AudioMixer
             switch (e)
             {
                 case AudioSessionState.AudioSessionStateExpired:
+                    // Occurs when application is closed.
                     this.Dispose();
                     break;
                 case AudioSessionState.AudioSessionStateInactive:
-                    this.Dispose();
+                    // Occurs when application has released audio.
+                    // this.Dispose();
                     break;
                 default:
                     break;

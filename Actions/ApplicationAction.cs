@@ -72,12 +72,15 @@ namespace AudioMixer
         private Image iconImage;
         private Image volumeImage;
         private float volumeStep = 0.1F;
+        private float volume;
+        private bool isMuted;
 
         private Utils.ControlType controlType = Utils.ControlType.Application;
 
         public string actionId = Guid.NewGuid().ToString();
+        public string processName;
         public PluginSettings settings;
-        public AudioSession AudioSession { get => pluginController.audioManager.audioSessions.Find(session => session.actionId == this.actionId); }
+        public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.FindAll(session => session.processName == this.processName); }
 
         public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
@@ -119,30 +122,41 @@ namespace AudioMixer
             // If audio session is static...
             if (settings.StaticApplication != null)
             {
-                // Ensure no other application action has the session.
+                // Before self assigning, ensure no other application action has the session.
                 var applicationAction = pluginController.applicationActions.Find(action => {
-                    if (action.AudioSession != null) return action.AudioSession.name == settings.StaticApplication.name;
+                    if (action.AudioSessions.Count > 0) return action.AudioSessions[0].processName == settings.StaticApplication.processName;
                     return false;
                 });
 
+                // Self assign before re-assigning the last action.
+                this.processName = settings.StaticApplication.processName;
+                AudioSessions.ForEach(session =>
+                {
+                    session.actionId = this.actionId;
+                });
+
+                // If an application action DOES have the session we want, and it is not this action...
                 if (applicationAction != null && applicationAction != this)
                 {
-                    applicationAction.AudioSession.actionId = this.actionId;
+                    // Reset and re-assign a new session to the previous action, if any.
+                    applicationAction.processName = null;
                     applicationAction.SetAudioSession();
-                } else
-                {
-                    var audioSession = pluginController.audioManager.audioSessions.Find(session => session.name == settings.StaticApplication.name);
-                    if (audioSession != null) audioSession.actionId = this.actionId;
                 }
             }
             else
             {
                 // Get the next unassigned audio session. Assign it.
                 var audioSession = pluginController.audioManager.audioSessions.Find(session => session.actionId == null);
-                if (audioSession != null) audioSession.actionId = this.actionId;
+                if (audioSession != null) {
+                    this.processName = audioSession.processName;
+                    AudioSessions.ForEach(session =>
+                    {
+                        session.actionId = this.actionId;
+                    });
+                }
             }
 
-            if (AudioSession == null)
+            if (AudioSessions.Count < 1)
             {
                 // If application action is static and audio session is not available, use greyscaled last known icon.
                 if (settings.StaticApplication != null)
@@ -157,21 +171,20 @@ namespace AudioMixer
             }
             else
             {
-                // Assign the session this application action.
-                AudioSession.actionId = this.actionId;
+                // NOTE: All audio sessions in one process are treated as one. If one changes volume so does the other.
+                // The reasoning for this comes down to possible unwanted multiple process icons being shown, and with no way
+                // of discriminating them I felt this was the best UX. Ex: Discord opens 2 audio sessions, 1 for comms, and the other for notifications.
+                // Anywho, this at least makes it easier for the user, I hope.
 
-                AudioSession.SessionDisconnnected += SessionDisconnected;
-                AudioSession.VolumeChanged += VolumeChanged;
+                AudioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
+                AudioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
 
                 Boolean selected = pluginController.SelectedAction == this;
-                Boolean muted = AudioSession.session.SimpleAudioVolume.Mute;
+                Boolean muted = Convert.ToBoolean(AudioSessions.Find(session => session.session.SimpleAudioVolume.Mute == true));
 
-                iconImage = Utils.CreateIconImage(AudioSession.processIcon);
-                volumeImage = Utils.CreateVolumeImage(AudioSession.session.SimpleAudioVolume.Volume);
+                iconImage = Utils.CreateIconImage(AudioSessions[0].processIcon);
+                volumeImage = Utils.CreateVolumeImage(AudioSessions[0].session.SimpleAudioVolume.Volume);
                 Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
-
-                var index = pluginController.audioManager.audioSessions.FindIndex(session => session.name == AudioSession.name);
-                pluginController.audioManager.audioSessions[index] = AudioSession;
             }
 
             if (settings.StaticApplication != null) pluginController.UpdateActions();
@@ -179,25 +192,42 @@ namespace AudioMixer
 
         public void ReleaseAudioSession()
         {
-            if (AudioSession != null)
+            AudioSessions.ForEach(session =>
             {
-                AudioSession.SessionDisconnnected -= SessionDisconnected;
-                AudioSession.VolumeChanged -= VolumeChanged;
-                AudioSession.actionId = null;
-            }
+                session.actionId = null;
+                session.SessionDisconnnected -= SessionDisconnected;
+                session.VolumeChanged -= VolumeChanged;
+            });
         }
 
         void SessionDisconnected(object sender, EventArgs e)
         {
-            this.SetAudioSession();
+            if (AudioSessions.Count < 2) this.SetAudioSession();
         }
 
-        void VolumeChanged(object sender, EventArgs e)
+        void VolumeChanged(object sender, AudioSession.VolumeChangedEventArgs e)
         {
+            AudioSession senderSession = sender as AudioSession;
+
             Boolean selected = pluginController.SelectedAction == this;
-            Boolean muted = AudioSession.session.SimpleAudioVolume.Mute;
-            volumeImage = Utils.CreateVolumeImage(AudioSession.session.SimpleAudioVolume.Volume);
-            Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted));
+
+            // NOTE: Do not use event arguments as they are not the correct values where volume and mute are set independantly
+            // causing two events to get fired.
+            if (volume != senderSession.session.SimpleAudioVolume.Volume || isMuted != senderSession.session.SimpleAudioVolume.Mute)
+            {
+                volume = senderSession.session.SimpleAudioVolume.Volume;
+                isMuted = senderSession.session.SimpleAudioVolume.Mute;
+
+                // Update any other sessions associated with the process.
+                AudioSessions.FindAll(session => session != senderSession).ForEach(session =>
+                {
+                    session.session.SimpleAudioVolume.Volume = volume;
+                    session.session.SimpleAudioVolume.Mute = isMuted;
+                });
+
+                volumeImage = Utils.CreateVolumeImage(volume);
+                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, isMuted));
+            }
         }
 
         public override void KeyPressed(KeyPayload payload)
@@ -221,8 +251,8 @@ namespace AudioMixer
             // If the timer of 3 seconds has passed.
             if (timerElapsed)
             {
-                pluginController.blacklist.Add(AudioSession.session.GetSessionIdentifier);
-                pluginController.audioManager.audioSessions.Remove(AudioSession);
+                //pluginController.blacklist.Add(AudioSession.session.GetSessionIdentifier);
+                //pluginController.audioManager.audioSessions.Remove(AudioSession);
                 //pluginController.UpdateActions();
             } else
             {
@@ -234,7 +264,7 @@ namespace AudioMixer
                 {
                     try
                     {
-                        SimpleAudioVolume volume = pluginController.SelectedAction.AudioSession.session.SimpleAudioVolume;
+                        SimpleAudioVolume volume = pluginController.SelectedAction.AudioSessions[0].session.SimpleAudioVolume;
                         if (volume == null)
                         {
                             throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
@@ -263,6 +293,12 @@ namespace AudioMixer
                                 }
                                 break;
                         }
+
+                        pluginController.SelectedAction.AudioSessions.ForEach(session =>
+                        {
+                            session.session.SimpleAudioVolume.Volume = volume.Volume;
+                            session.session.SimpleAudioVolume.Mute = volume.Mute;
+                        });
                     } catch (Exception ex)
                     {
                         Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
@@ -273,8 +309,8 @@ namespace AudioMixer
 
         public void SetSelected(Boolean selected)
         {
-            if (AudioSession != null) {
-                Boolean muted = AudioSession.session.SimpleAudioVolume.Mute;
+            if (AudioSessions != null) {
+                Boolean muted = Convert.ToBoolean(AudioSessions.Find(session => session.session.SimpleAudioVolume.Mute == true));
                 Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted));
             } else
             {
@@ -343,9 +379,9 @@ namespace AudioMixer
                 {
                     case "setstaticapplication":
                         // Find the session...
-                        var audioSession = pluginController.audioManager.audioSessions.Find(session => session.name == payload["value"].ToString());
+                        var audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
                         settings.StaticApplication = new AudioSessionSetting(audioSession);
-                        settings.StaticApplicationName = settings.StaticApplication.name;
+                        settings.StaticApplicationName = settings.StaticApplication.processName;
                         SaveSettings();
 
                         SetAudioSession();

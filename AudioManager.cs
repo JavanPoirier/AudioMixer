@@ -57,9 +57,9 @@ namespace AudioMixer
             }
         }
 
+        // TODO: Clump all audiosessions into one application. Always check if an application name exists, and store all audio sessions under the application name.
         void AddAudioSession(AudioSessionControl session)
         {
-            var test = session.IsSystemSoundsSession;
             // TODO: Still add them to session list, just add a blacklist property.
             if (!pluginController.blacklist.Contains(session.GetSessionIdentifier))
             {
@@ -67,10 +67,10 @@ namespace AudioMixer
                 audioSessions.Add(audioSession);
 
                 // Check if session has a static application action.
-                var applicationAction = pluginController.applicationActions.Find(action => action.settings?.StaticApplication?.name == audioSession.name);
+                var applicationAction = pluginController.applicationActions.Find(action => action.settings?.StaticApplication?.processName == audioSession.processName);
                 if (applicationAction != null)
                 {
-                    audioSession.actionId = applicationAction.actionId;
+                    applicationAction.processName = audioSession.processName;
                     applicationAction.SetAudioSession();
                 } else
                 {

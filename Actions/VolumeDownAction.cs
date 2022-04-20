@@ -77,7 +77,7 @@ namespace AudioMixer.Actions
             {
                 try
                 {
-                    SimpleAudioVolume volume = pluginController.SelectedAction.AudioSession.session.SimpleAudioVolume;
+                    SimpleAudioVolume volume = pluginController.SelectedAction.AudioSessions[0].session.SimpleAudioVolume;
                     if (volume == null)
                     {
                         throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
@@ -90,6 +90,12 @@ namespace AudioMixer.Actions
                         newVolume = volume.Volume - volumeStep;
                         volume.Volume = newVolume < 0F ? 0F : newVolume;
                     }
+
+                    pluginController.SelectedAction.AudioSessions.ForEach(session =>
+                    {
+                        session.session.SimpleAudioVolume.Volume = volume.Volume;
+                        session.session.SimpleAudioVolume.Mute = volume.Mute;
+                    });
                 }
                 catch (Exception ex)
                 {
