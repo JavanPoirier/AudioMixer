@@ -7,11 +7,8 @@ using System.Threading.Tasks;
 using System.Timers;
 using Newtonsoft.Json;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
-using NAudio.CoreAudioApi.Interfaces;
 using System.Linq;
 using MoreLinq.Extensions;
-using static AudioMixer.PluginController;
 
 namespace AudioMixer
 {
@@ -46,7 +43,7 @@ namespace AudioMixer
             public string VolumeStep { get; set; }
 
             [JsonProperty(PropertyName = "staticApplicationName")]
-            public string StaticApplicationName { get => StaticApplication?.processName; }
+            public string StaticApplicationName { get; set; }
 
             [JsonProperty(PropertyName = "staticApplication")]
             public AudioSessionSetting StaticApplication { get; set; }
@@ -81,7 +78,7 @@ namespace AudioMixer
 
         private PluginController pluginController = PluginController.Instance;
         private Utils.ControlType controlType = Utils.ControlType.Application;
-        private System.Timers.Timer timer = new System.Timers.Timer(3000);
+        private System.Timers.Timer timer = new System.Timers.Timer(2000);
         private bool timerElapsed = false;
         private GlobalSettings globalSettings;
 
@@ -160,7 +157,11 @@ namespace AudioMixer
                 var audioSession = pluginController.audioManager.audioSessions.Find(session =>
                 {
                     var blacklistedApplication = settings.BlacklistedApplications.Find(application => application.processName == session.processName);
-                    return session.actionId == null && blacklistedApplication == null;
+
+                    // Ensure no application action has the session statically set.
+                    var staticApplicationAction = pluginController.applicationActions.Find(action => action.settings.StaticApplication?.processName == session.processName);
+
+                    return session.actionId == null && blacklistedApplication == null && staticApplicationAction == null;
                 });
 
                 if (audioSession != null) {
@@ -512,17 +513,19 @@ namespace AudioMixer
                         if (value == "")
                         {
                             settings.StaticApplication = null;
+                            settings.StaticApplicationName = null;
                         } else
                         {
                             audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
                             if (audioSession != null)
                             {
                                 settings.StaticApplication = new AudioSessionSetting(audioSession);
+                                settings.StaticApplicationName = settings.StaticApplication.processName;
                             }
                         }
 
                         await SaveSettings();
-                        pluginController.AddActionToQueue(this);
+                        pluginController.UpdateActions();
                         break;
                     case "toggleblacklistapp":
                         ToggleBlacklistApp(payload["value"].ToString());

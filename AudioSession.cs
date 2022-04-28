@@ -5,8 +5,6 @@ using System.Drawing;
 using NAudio.CoreAudioApi.Interfaces;
 using BarRaider.SdTools;
 using Newtonsoft.Json;
-using System.IO;
-using System.Drawing.Imaging;
 
 namespace AudioMixer
 {
@@ -72,7 +70,6 @@ namespace AudioMixer
                 // TODO:
                 //processIcon = Icon.ExtractAssociatedIcon(session.IconPath).ToBitmap(); "%windir%\\system32\\mmres.dll,-3030"
                 //Environment.ExpandEnvironmentVariables("%windir%\\system32\\mmres.dll");
-                var test = Path.GetFullPath(session.IconPath);
 
                 // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName for SO resolution.
                 //processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
@@ -82,16 +79,8 @@ namespace AudioMixer
             } catch (Exception ex)
             {
                 var name = ex.GetType().Name;
-                switch (name)
-                {
-                    case "Exception":
-                        this.Dispose();
-                        break;
-                    default:
-                        Logger.Instance.LogMessage(TracingLevel.ERROR, ex.GetType().Name);
-                        Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
-                        throw;
-                }
+                Logger.Instance.LogMessage(TracingLevel.ERROR, name);
+                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
             }
         }
 

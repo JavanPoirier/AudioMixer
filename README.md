@@ -10,15 +10,12 @@ a single applicaiton. The Stream Deck application placeholders will update accor
 	- Static Applications
 		Want a application to stay on the same key regardless if it's open or not? Make it static.
 		
-	- Application Whitelisting
-		Have applications you want to take priority over others? Setup your whitelist to have those applications always show first.
-
 	- Application Blacklisting
 		Have an application you know you will never want to control? Add it to your blacklist to prevent it from ever being displayed on your Stream Deck.
 		
 ## Controls
 	- Blacklist An App
-		No need to head into Stream Deck and manually blacklist it. Hold down the key for 3 seconds and it will be
+		No need to head into Stream Deck and manually blacklist it. Hold down the key for 2 seconds and it will be
 		auto-magically added to your blacklist.
 
 ### Known Limitations
@@ -39,12 +36,5 @@ a single applicaiton. The Stream Deck application placeholders will update accor
 		of their audio intentions once they actually start playing, not on open. So keep this in mind. You can see this for yourself, if you open up the Windows Volume Mixer.
 		A possible solution to this would require quite the re-write, of watching applications rather than just audio sessions.
 
-	- Seeing double applications.
-		Also noticed this when testing, specifically with Discord. This is working as intented here, Discord is just doing some wonky shit causing two audio sessions to be created.
-		Sadly I cannot find a discriminator to ensure that the non-needed session is omitted.
-
 ### TODO
 	- Support changing of default output device.
-
-### Learnings
-	- .NET devs can basically do whatever the hell, in some hella wonky workaround way, with windows. Thanks MS. The consistency is horrid.
