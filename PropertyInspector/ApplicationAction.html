@@ -17,8 +17,8 @@
         <!--  -->
         <div class="sdpi-item" id="dvStaticApp">
             <div class="sdpi-item-label">Application</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="staticApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApplication()"></select>
-            <button class="sdpi-item-value max20" onclick="toggleFromWhitelist()">Clear</button>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApp()"></select>
+            <button class="sdpi-item-value max20" onclick="setStaticApp(true)">Clear</button>
         </div>
         <div class="sdpi-item">
             <details class="message question">
@@ -46,8 +46,8 @@
         <div class="sdpi-item" id="dvInlineControls">
             <div class="sdpi-item-label">Inline Controls</div>
             <div class="sdpi-item-value">
-                <input id="inlineControls" type="checkbox" value="" class="sdProperty sdCheckbox" oninput="setSettings()">
-                <label for="inlineControls" class="sdpi-item-label"><span></span>Show inline controls</label>
+                <input id="inlineControlsEnabled" type="checkbox" value="" class="sdProperty sdCheckbox" oninput="setSettings()">
+                <label for="inlineControlsEnabled" class="sdpi-item-label"><span></span>Show inline controls</label>
             </div>
         </div>
         <div class="sdpi-item">
@@ -65,23 +65,18 @@
         </div>
 
         <!--  -->
-        <div type="list" class="sdpi-item list" id="dvBlacklist" style="min-height:50px;max-height:100px;">
+        <div type="list" class="sdpi-item list" id="dvBlacklist">
             <div class="sdpi-item-label">Blacklist</div>
-            <ol class="sdpi-item-value" id="blacklist">
-                <li>Milk</li>
-                <li>Bread</li>
-                <li>Chocolate</li>
-                <li>More chocolate</li>
-            </ol>
+            <ol class="sdpi-item-value" id="blacklist" style="height:100px;"></ol>
         </div>
-        <div class="sdpi-item" id="dvBlacklist">
+        <div class="sdpi-item" id="dvBlacklistSelector">
             <div class="sdpi-item-label" style="font-size:0"></div>
-            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplications" sdListTextProperty="name" sdListValueProperty="name" sdValueField="blacklistApplicationName"></select>
-            <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="blacklistApplicationName" oninput=""></select>
+            <button class="max20" onclick="toggleBlacklistApp()">Add/Remove</button>
         </div>
 
         <!--  -->
-        <div type="list" class="sdpi-item list" id="dvWhitelist" style="min-height:50px;max-height:100px;margin-top:10px">
+        <!--<div type="list" class="sdpi-item list" id="dvWhitelist" style="min-height:50px;max-height:100px;margin-top:10px">
             <div class="sdpi-item-label">Whitelist</div>
             <ol class="sdpi-item-value" id="whitelist">
                 <li>Milk</li>
@@ -90,11 +85,11 @@
                 <li>More chocolate</li>
             </ol>
         </div>
-        <div class="sdpi-item" id="dvBlacklist">
+        <div class="sdpi-item" id="dvWhitelistSelector">
             <div class="sdpi-item-label" style="font-size:0"></div>
-            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplications" sdListTextProperty="name" sdListValueProperty="name" sdValueField="blacklistApplicationName"></select>
+            <select class="sdpi-item-value select sdProperty sdList" id="whitelistApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="whitelistApplicationName" oninput=""></select>
             <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
-        </div>
+        </div>-->
         <!--<div class="sdpi-item" id="dvWhitelist">
         <div class="sdpi-item-label" style="font-size:0"></div>
         <select class="sdpi-item-value select sdProperty sdList" id="whitelistApplications" sdListTextProperty="nameWithPID" sdListValueProperty="nameWithPID" sdValueField="whitelistApplicationNameWithPID"></select>

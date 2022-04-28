@@ -4,6 +4,9 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace AudioMixer
 {
@@ -241,5 +244,43 @@ namespace AudioMixer
             byteBuffer = null;
             return bmpReturn;
         }
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+
+        [DllImport("psapi.dll")]
+        static extern uint GetModuleFileNameEx(IntPtr hProcess, IntPtr hModule, [Out] StringBuilder lpBaseName, [In][MarshalAs(UnmanagedType.U4)] int nSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool CloseHandle(IntPtr hObject);
+
+        // https://stackoverflow.com/a/34991822/9005679
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string GetProcessName(int pid)
+        {
+            var processHandle = OpenProcess(0x0400 | 0x0010, false, pid);
+
+            if (processHandle == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            const int lengthSb = 4000;
+
+            var sb = new StringBuilder(lengthSb);
+
+            string result = null;
+
+            if (GetModuleFileNameEx(processHandle, IntPtr.Zero, sb, lengthSb) > 0)
+            {
+                result = Path.GetFullPath(sb.ToString());
+            }
+
+            CloseHandle(processHandle);
+
+            return result;
+        }
+
     }
 }

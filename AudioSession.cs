@@ -4,6 +4,9 @@ using NAudio.CoreAudioApi;
 using System.Drawing;
 using NAudio.CoreAudioApi.Interfaces;
 using BarRaider.SdTools;
+using Newtonsoft.Json;
+using System.IO;
+using System.Drawing.Imaging;
 
 namespace AudioMixer
 {
@@ -16,6 +19,13 @@ namespace AudioMixer
         {
             processName = audioSession.processName;
             processIcon = Utils.BitmapToBase64(audioSession.processIcon);
+        }
+
+        [JsonConstructor]
+        public AudioSessionSetting(string processIcon, string processName)
+        {
+            this.processIcon = processIcon;
+            this.processName = processName;
         }
     }
 
@@ -55,13 +65,24 @@ namespace AudioMixer
                 Process process = Process.GetProcessById((int)session.GetProcessID);
 
                 processId = process.Id;
+
+                // NOTE: Don't use MainWindowTitle as some applciations dynamically update it. Ex: Spotify changes it to the playing song.
                 processName = process.ProcessName;
-                processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
+
+                // TODO:
+                //processIcon = Icon.ExtractAssociatedIcon(session.IconPath).ToBitmap(); "%windir%\\system32\\mmres.dll,-3030"
+                //Environment.ExpandEnvironmentVariables("%windir%\\system32\\mmres.dll");
+                var test = Path.GetFullPath(session.IconPath);
+
+                // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName for SO resolution.
+                //processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
+                processIcon = Icon.ExtractAssociatedIcon(Utils.GetProcessName(process.Id)).ToBitmap();
 
                 session.RegisterEventClient(this);
             } catch (Exception ex)
             {
-                switch (ex.GetType().Name)
+                var name = ex.GetType().Name;
+                switch (name)
                 {
                     case "Exception":
                         this.Dispose();
@@ -69,9 +90,6 @@ namespace AudioMixer
                     default:
                         Logger.Instance.LogMessage(TracingLevel.ERROR, ex.GetType().Name);
                         Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
-
-                        // TODO: Find case.
-                        //Logger.Instance.LogMessage(TracingLevel.ERROR, "This application must be run as an administrator.");
                         throw;
                 }
             }
@@ -79,10 +97,17 @@ namespace AudioMixer
 
         public void Dispose()
         {
-            this.pluginController.audioManager.audioSessions.Remove(this);
+            try
+            {
+                var applicationAction = this.pluginController.applicationActions.Find(actions => actions.processName == this.processName);
+                applicationAction.ReleaseAudioSession();
 
-            var applicationActions = this.pluginController.applicationActions.FindAll(actions => actions.processName == this.processName);
-            applicationActions.ForEach(action => action.SetAudioSession());
+                this.pluginController.audioManager.audioSessions.Remove(this);
+                pluginController.UpdateActions();
+            } catch (Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+            }
         }
 
         public void OnVolumeChanged(float volume, bool isMuted)

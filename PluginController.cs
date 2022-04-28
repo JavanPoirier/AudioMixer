@@ -1,4 +1,5 @@
 ﻿using BarRaider.SdTools;
+using MoreLinq;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -8,14 +9,16 @@ namespace AudioMixer
 {
     public class PluginController : IDisposable
     {
-        private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
-
         public AudioManager audioManager;
         public List<ApplicationAction> applicationActions = new List<ApplicationAction>();
-        public List<string> blacklist = new List<string>();
-        public List<string> whitelist = new List<string>();
+
         private ApplicationAction selectedAction;
-        //private GlobalSettings globalSettings;
+        private GlobalSettings globalSettings;
+        private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
+
+        // We can only assign one action at a time.
+        private bool isSettingActions = false;
+        private List<ApplicationAction> actionQueue = new List<ApplicationAction>();
 
         public ApplicationAction SelectedAction
         {
@@ -61,34 +64,55 @@ namespace AudioMixer
             GlobalSettingsManager.Instance.OnReceivedGlobalSettings -= OnReceivedGlobalSettings;
         }
 
-        public void AddAction(ApplicationAction applicationAction)
+        public void AddAction(ApplicationAction action)
         {
-            applicationActions.Add(applicationAction);
-
-            // If a static application action was added, update all dynamic application actions.
-            if (applicationAction.settings.StaticApplication == null)
-            {
-                UpdateActions();
-            }
+            applicationActions.Add(action);
+            AddActionToQueue(action);
+            UpdateActions();
         }
 
-        public void RemoveAction(ApplicationAction pluginAction)
+        public void RemoveAction(ApplicationAction action)
         {
-            applicationActions.Remove(pluginAction);
+            applicationActions.Remove(action);
             UpdateActions();
+        }
+
+        public async void AddActionToQueue(ApplicationAction action)
+        {
+            actionQueue.Add(action);
+            if (!isSettingActions)
+            {
+                isSettingActions = true;
+                while (actionQueue.Count > 0)
+                {
+                    try
+                    {
+                        await actionQueue.First().SetAudioSession();
+                        actionQueue.RemoveAt(0);
+                    } catch { }
+                }
+                isSettingActions = false;
+            }
         }
 
         public void UpdateActions()
         {
-            var dynamicApplicationActions = applicationActions.FindAll(action => action.settings.StaticApplication == null);
-            dynamicApplicationActions.ForEach(action => action.SetAudioSession());
+            applicationActions.ForEach(action =>
+            {
+                action.ReleaseAudioSession();
+            });
+
+            applicationActions.ForEach(action =>
+            {
+                AddActionToQueue(action);
+            });
         }
 
         private void SetActionControls()
         {
-            if (selectedAction != null)
+            if (selectedAction != null && globalSettings.InlineControlsEnabled)
             {
-                List<ApplicationAction> controls = applicationActions.FindAll((pluginAction) => pluginAction != this.selectedAction);
+                List<ApplicationAction> controls = applicationActions.FindAll(action => action != this.selectedAction);
 
                 if (controls.Count >= 3)
                 {
@@ -101,34 +125,18 @@ namespace AudioMixer
                 }
             } else
             {
-                // Reset all actions.
+                // Reset all application actions.
                 applicationActions.ForEach(pluginAction => pluginAction.SetControlType(Utils.ControlType.Application));
+                //UpdateActions();
             }
         }
 
         private void OnReceivedGlobalSettings(object sender, ReceivedGlobalSettingsPayload payload)
         {
-            //// Global Settings exist
-            //if (payload?.Settings != null && payload.Settings.Count > 0)
-            //{
-            //    globalSettings = payload.Settings.ToObject<GlobalSettings>();
-
-            //    // global now has all the settings
-            //    // Console.Writeline(global.MyFirstField);
-
-            //}
-            //else // Global settings do not exist, create new one and SAVE it
-            //{
-            //    Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-            //    globalSettings = new GlobalSettings();
-            //    SetGlobalSettings();
-            //}
+            if (payload?.Settings != null && payload.Settings.Count > 0)
+            {
+                globalSettings = payload.Settings.ToObject<GlobalSettings>();
+            }
         }
-
-        //// Saves the global object back the global settings
-        //private void SetGlobalSettings()
-        //{
-        //    Connection.SetGlobalSettingsAsync(JObject.FromObject(global));
-        //}
     }
 }

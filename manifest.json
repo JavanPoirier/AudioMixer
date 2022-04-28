@@ -64,12 +64,12 @@
   "Author": "Javan Poirier",
   "Name": "Audio Mixer",
   "Description": "Allows for mixing of application volumes.",
-  "Icon": "Images/Icon",
+  "Icon": "Images/Sliders",
   "URL": "",
   "Version": "1.0",
   "CodePath": "com.javanpoirier.audiomixer",
   "Category": "Audio Mixer",
-  "CategoryIcon": "Images/Icon",
+  "CategoryIcon": "Images/Sliders",
   "OS": [
     {
       "Platform": "windows",

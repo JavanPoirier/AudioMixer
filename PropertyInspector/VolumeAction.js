@@ -7,13 +7,12 @@
 
         // Received message from Stream Deck
         var jsonObj = JSON.parse(event.data);
+        var payload = jsonObj.payload;
 
         if (jsonObj.event === 'sendToPropertyInspector') {
-            var payload = jsonObj.payload;
             showHideSettings(payload);
         }
         else if (jsonObj.event === 'didReceiveSettings') {
-            var payload = jsonObj.payload;
             showHideSettings(payload.settings);
         }
     });

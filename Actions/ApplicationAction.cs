@@ -9,6 +9,9 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using NAudio.CoreAudioApi.Interfaces;
+using System.Linq;
+using MoreLinq.Extensions;
+using static AudioMixer.PluginController;
 
 namespace AudioMixer
 {
@@ -17,90 +20,98 @@ namespace AudioMixer
     {
         public class PluginSettings
         {
+            public const string VOLUME_STEP = "10";
+            public const int INLINE_CONTROLS_TIMEOUT = 0;
+
             public static PluginSettings CreateDefaultSettings()
             {
                 PluginSettings instance = new PluginSettings
                 {
+                    VolumeStep = VOLUME_STEP,
                     StaticApplication = null,
-                    StaticApplicationName = String.Empty,
-                    StaticApplications = null,
-                    BlacklistApplications = null,
-                    BlacklistedApplications = null,
-                    WhitelistApplications = null,
-                    WhitelistedApplications = null,
-                    VolumeStep = "10",
+                    StaticApplications = new List<AudioSessionSetting>(),
+                    BlacklistApplicationName = String.Empty,
+                    BlacklistApplications = new List<AudioSessionSetting>(),
+                    BlacklistedApplications = new List<AudioSessionSetting>(),
+                    WhitelistApplicationName = String.Empty,
+                    WhitelistApplications = new List<AudioSessionSetting>(),
+                    WhitelistedApplications = new List<AudioSessionSetting>(),
+                    InlineControlsEnabled = true,
+                    InlineControlsTimeout = INLINE_CONTROLS_TIMEOUT,
                 };
                 return instance;
             }
 
+            [JsonProperty(PropertyName = "volumeStep")]
+            public string VolumeStep { get; set; }
+
+            [JsonProperty(PropertyName = "staticApplicationName")]
+            public string StaticApplicationName { get => StaticApplication?.processName; }
+
             [JsonProperty(PropertyName = "staticApplication")]
             public AudioSessionSetting StaticApplication { get; set; }
 
-            [JsonProperty(PropertyName = "staticApplicationName")]
-            public String StaticApplicationName { get; set; }
-
             [JsonProperty(PropertyName = "staticApplications")]
-            public List<AudioSession> StaticApplications { get; set; }
+            public List<AudioSessionSetting> StaticApplications { get; set; }
 
             [JsonProperty(PropertyName = "blacklistApplications")]
-            public List<AudioSession> BlacklistApplications { get; set; }
+            public List<AudioSessionSetting> BlacklistApplications { get; set; }
 
             [JsonProperty(PropertyName = "blacklistApplicationName")]
-            public String BlacklistApplicationName { get; set; }
+            public string BlacklistApplicationName { get; set; }
 
             [JsonProperty(PropertyName = "blacklistedApplications")]
             public List<AudioSessionSetting> BlacklistedApplications { get; set; }
 
             [JsonProperty(PropertyName = "whitelistApplications")]
-            public List<AudioSession> WhitelistApplications { get; set; }
+            public List<AudioSessionSetting> WhitelistApplications { get; set; }
 
             [JsonProperty(PropertyName = "whitelistedApplicationName")]
-            public String WhitelistApplicationName { get; set; }
+            public string WhitelistApplicationName { get; set; }
 
             [JsonProperty(PropertyName = "whitelistedApplications")]
             public List<AudioSessionSetting> WhitelistedApplications { get; set; }
 
-            [JsonProperty(PropertyName = "volumeStep")]
-            public String VolumeStep { get; set; }
+            [JsonProperty(PropertyName = "inlineControlsEnabled")]
+            public bool InlineControlsEnabled { get; set; }
+
+            [JsonProperty(PropertyName = "inlineControlsTimeout")]
+            public int InlineControlsTimeout { get; set; }
         }
 
         private PluginController pluginController = PluginController.Instance;
-
+        private Utils.ControlType controlType = Utils.ControlType.Application;
         private System.Timers.Timer timer = new System.Timers.Timer(3000);
         private bool timerElapsed = false;
+        private GlobalSettings globalSettings;
 
         private Image iconImage;
         private Image volumeImage;
-        private float volumeStep = 0.1F;
         private float volume;
         private bool isMuted;
-
-        private Utils.ControlType controlType = Utils.ControlType.Application;
 
         public string actionId = Guid.NewGuid().ToString();
         public string processName;
         public PluginSettings settings;
+
         public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.FindAll(session => session.processName == this.processName); }
 
         public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
-            this.settings = PluginSettings.CreateDefaultSettings();
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
-                this.settings = PluginSettings.CreateDefaultSettings();
+                settings = PluginSettings.CreateDefaultSettings();
+                SaveSettings();
             }
             else
             {
-                //this.settings = payload.Settings.ToObject<PluginSettings>();
+                settings = payload.Settings.ToObject<PluginSettings>();
             }
 
-            this.settings.StaticApplications = pluginController.audioManager.audioSessions;
-            SaveSettings();
+            Connection.GetGlobalSettingsAsync();
+            InitializeSettings();
 
             Connection.OnSendToPlugin += OnSendToPlugin;
-
-            pluginController.AddAction(this);
-            SetAudioSession();
         }
 
         public override void Dispose()
@@ -108,13 +119,13 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.INFO, $"Destructor called");
             Connection.OnSendToPlugin -= OnSendToPlugin;
 
-            ReleaseAudioSession();
-
             pluginController.RemoveAction(this);
+
+            ReleaseAudioSession();
             timer.Dispose();
         }
 
-        public void SetAudioSession()
+        public async Task SetAudioSession()
         {
             // Previous audio session cleanup.
             ReleaseAudioSession();
@@ -122,7 +133,7 @@ namespace AudioMixer
             // If audio session is static...
             if (settings.StaticApplication != null)
             {
-                // Before self assigning, ensure no other application action has the session.
+                // Before self assignin, ensure no other application action has the session.
                 var applicationAction = pluginController.applicationActions.Find(action => {
                     if (action.AudioSessions.Count > 0) return action.AudioSessions[0].processName == settings.StaticApplication.processName;
                     return false;
@@ -139,14 +150,19 @@ namespace AudioMixer
                 if (applicationAction != null && applicationAction != this)
                 {
                     // Reset and re-assign a new session to the previous action, if any.
-                    applicationAction.processName = null;
-                    applicationAction.SetAudioSession();
+                    applicationAction.ReleaseAudioSession();
+                    pluginController.AddActionToQueue(applicationAction);
                 }
             }
             else
             {
                 // Get the next unassigned audio session. Assign it.
-                var audioSession = pluginController.audioManager.audioSessions.Find(session => session.actionId == null);
+                var audioSession = pluginController.audioManager.audioSessions.Find(session =>
+                {
+                    var blacklistedApplication = settings.BlacklistedApplications.Find(application => application.processName == session.processName);
+                    return session.actionId == null && blacklistedApplication == null;
+                });
+
                 if (audioSession != null) {
                     this.processName = audioSession.processName;
                     AudioSessions.ForEach(session =>
@@ -162,11 +178,11 @@ namespace AudioMixer
                 if (settings.StaticApplication != null)
                 {
                     var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
-                    Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+                    await Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
                 } else
                 {
                     Logger.Instance.LogMessage(TracingLevel.INFO, "No sessions available.");
-                    Connection.SetDefaultImageAsync();
+                    await Connection.SetDefaultImageAsync();
                 }
             }
             else
@@ -179,15 +195,20 @@ namespace AudioMixer
                 AudioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
                 AudioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
 
-                Boolean selected = pluginController.SelectedAction == this;
-                Boolean muted = Convert.ToBoolean(AudioSessions.Find(session => session.session.SimpleAudioVolume.Mute == true));
+                try
+                {
+                    Boolean selected = pluginController.SelectedAction == this;
+                    Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
 
-                iconImage = Utils.CreateIconImage(AudioSessions[0].processIcon);
-                volumeImage = Utils.CreateVolumeImage(AudioSessions[0].session.SimpleAudioVolume.Volume);
-                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                    iconImage = Utils.CreateIconImage(AudioSessions[0].processIcon);
+                    volumeImage = Utils.CreateVolumeImage(AudioSessions[0].session.SimpleAudioVolume.Volume);
+                    await Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                } catch (Exception ex)
+                {
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message.ToString());
+                    return;
+                }
             }
-
-            if (settings.StaticApplication != null) pluginController.UpdateActions();
         }
 
         public void ReleaseAudioSession()
@@ -198,11 +219,13 @@ namespace AudioMixer
                 session.SessionDisconnnected -= SessionDisconnected;
                 session.VolumeChanged -= VolumeChanged;
             });
+
+            this.processName = null;
         }
 
         void SessionDisconnected(object sender, EventArgs e)
         {
-            if (AudioSessions.Count < 2) this.SetAudioSession();
+            if (AudioSessions.Count < 2) pluginController.AddActionToQueue(this);
         }
 
         void VolumeChanged(object sender, AudioSession.VolumeChangedEventArgs e)
@@ -251,12 +274,9 @@ namespace AudioMixer
             // If the timer of 3 seconds has passed.
             if (timerElapsed)
             {
-                //pluginController.blacklist.Add(AudioSession.session.GetSessionIdentifier);
-                //pluginController.audioManager.audioSessions.Remove(AudioSession);
-                //pluginController.UpdateActions();
+                ToggleBlacklistApp(processName);
             } else
             {
-
                 if (controlType == Utils.ControlType.Application)
                 {
                     pluginController.SelectedAction = this;
@@ -271,6 +291,7 @@ namespace AudioMixer
                         }
 
                         float newVolume = 1F;
+                        float volumeStep = (float)Int32.Parse(settings.VolumeStep) / 100;
                         switch (controlType)
                         {
                             case Utils.ControlType.Mute:
@@ -280,7 +301,7 @@ namespace AudioMixer
                                 if (volume.Mute) volume.Mute = !volume.Mute;
                                 else
                                 {
-                                    newVolume = volume.Volume - volumeStep;
+                                    newVolume = volume.Volume - (volumeStep);
                                     volume.Volume = newVolume < 0F ? 0F : newVolume; 
                                 }
                                 break;
@@ -309,13 +330,16 @@ namespace AudioMixer
 
         public void SetSelected(Boolean selected)
         {
-            if (AudioSessions != null) {
-                Boolean muted = Convert.ToBoolean(AudioSessions.Find(session => session.session.SimpleAudioVolume.Mute == true));
+            if (AudioSessions.Count > 0) {
+                Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
                 Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted));
             } else
             {
-                var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
-                Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+                if (settings?.StaticApplication != null)
+                {
+                    var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
+                    Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+                }
             }
         }
 
@@ -334,9 +358,138 @@ namespace AudioMixer
                     Connection.SetImageAsync(Utils.CreateVolumeUpKey());
                     break;
                 default:
-                    SetAudioSession();
+                    pluginController.AddActionToQueue(this);
                     break;
             }
+        }
+
+        private void ToggleBlacklistApp(string processName)
+        {
+            AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
+            if (audioSession != null)
+            {
+                var existingBlacklistedApp = settings.BlacklistedApplications.Find(session => session.processName == processName);
+                if (existingBlacklistedApp != null)
+                {
+                    settings.BlacklistedApplications.Remove(existingBlacklistedApp);
+                    settings.BlacklistApplicationName = String.Empty;
+                }
+                else
+                {
+                    settings.BlacklistedApplications.Add(new AudioSessionSetting(audioSession));
+                    settings.BlacklistApplicationName = String.Empty;
+                }
+
+                SetGlobalSettings();
+                SaveSettings();
+
+                Connection.SendToPropertyInspectorAsync(JObject.FromObject(settings));
+
+                pluginController.UpdateActions();
+            }
+        }
+
+        public void RefreshApplications()
+        {
+            var applications = new List<AudioSession>(pluginController.audioManager.audioSessions).ConvertAll(session => new AudioSessionSetting(session));
+
+            // Remove duplicate process'
+            var distinctApplications = applications.DistinctBy(app => app.processName).ToList();
+
+            settings.StaticApplications = distinctApplications;
+            globalSettings.BlacklistApplications = new List<AudioSessionSetting>(distinctApplications);
+            globalSettings.WhitelistApplications = new List<AudioSessionSetting>(distinctApplications);
+
+            globalSettings.BlacklistApplications.RemoveAll(app => !globalSettings.WhitelistApplications.Contains(app));
+            globalSettings.WhitelistApplications.RemoveAll(app => !globalSettings.BlacklistApplications.Contains(app));
+
+            SetGlobalSettings();
+            SaveSettings();
+        }
+
+        // Global settings are received on action initialization. Local settings are only received when changed in the PI.
+        public async override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload) {
+            try
+            {
+                // Global Settings exist
+                if (payload?.Settings != null && payload.Settings.Count > 0)
+                {
+                    globalSettings = payload.Settings.ToObject<GlobalSettings>();
+                    settings.VolumeStep = globalSettings.VolumeStep;
+                    settings.BlacklistApplications = globalSettings.BlacklistApplications;
+                    settings.BlacklistedApplications = globalSettings.BlacklistedApplications;
+                    settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
+                    settings.InlineControlsTimeout = globalSettings.InlineControlsTimeout;
+                    await InitializeSettings();
+                    await SaveSettings();
+
+                    // Only once the settings are set do we add the action.
+                    if (!pluginController.applicationActions.Contains(this))
+                    {
+                        pluginController.AddAction(this);
+                    }
+                }
+                else // Global settings do not exist, create new one and SAVE it
+                {
+                    Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
+                    globalSettings = new GlobalSettings();
+                    globalSettings.InlineControlsEnabled = true;
+                    await SetGlobalSettings();
+                }
+
+                pluginController.AddActionToQueue(this);
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
+            }
+        }
+
+        private Task SetGlobalSettings()
+        {
+            globalSettings.VolumeStep = settings.VolumeStep;
+
+            // Concat blacklistApplications with existing blacklistedApplications and remove duplicate process. This is required as the
+            // process wanting to be removed fromt he blacklist may not be running.
+            globalSettings.BlacklistApplications = settings.BlacklistApplications.Concat(settings.BlacklistedApplications).DistinctBy(app => app.processName).ToList();
+
+            globalSettings.BlacklistedApplications = settings.BlacklistedApplications;
+            globalSettings.WhitelistedApplications = settings.WhitelistedApplications;
+            globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
+
+            return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
+        }
+
+        private Task InitializeSettings()
+        {
+            if (String.IsNullOrEmpty(settings.VolumeStep))
+            {
+                settings.VolumeStep = PluginSettings.VOLUME_STEP;
+                SaveSettings();
+            }
+
+            if (settings.BlacklistApplications == null)
+            {
+                settings.BlacklistApplications = new List<AudioSessionSetting>();
+                SaveSettings();
+            }
+
+            if (settings.BlacklistedApplications == null)
+            {
+                settings.BlacklistedApplications = new List<AudioSessionSetting>();
+                SaveSettings();
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public async override void ReceivedSettings(ReceivedSettingsPayload payload)
+        {
+            Tools.AutoPopulateSettings(settings, payload.Settings);
+            await InitializeSettings();
+
+            await SetGlobalSettings();
+            await SaveSettings();
         }
 
         private Task SaveSettings()
@@ -344,54 +497,38 @@ namespace AudioMixer
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
         }
 
-        public override void ReceivedSettings(ReceivedSettingsPayload payload)
-        {
-            Tools.AutoPopulateSettings(settings, payload.Settings);
-
-            if (settings.StaticApplication != null) SetAudioSession();
-        }
-
-        public override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload) {
-            // Global Settings exist
-            if (payload?.Settings != null && payload.Settings.Count > 0)
-            {
-                var global = payload.Settings.ToObject<GlobalSettings>();
-
-                // global now has all the settings
-                Console.Write(global.VolumeStep);
-
-            }
-            else // Global settings do not exist, create new one and SAVE it
-            {
-                Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                var global = new GlobalSettings();
-                Connection.SetGlobalSettingsAsync(JObject.FromObject(global));
-            }
-        }
-
-        private void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
+        private async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
         {
             var payload = e.Event.Payload;
 
             if (payload["property_inspector"] != null)
             {
+                AudioSession audioSession;
                 switch (payload["property_inspector"].ToString().ToLowerInvariant())
                 {
-                    case "setstaticapplication":
-                        // Find the session...
-                        var audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
-                        settings.StaticApplication = new AudioSessionSetting(audioSession);
-                        settings.StaticApplicationName = settings.StaticApplication.processName;
-                        SaveSettings();
+                    case "setstaticapp":
+                        var value = payload["value"].ToString();
 
-                        SetAudioSession();
+                        if (value == "")
+                        {
+                            settings.StaticApplication = null;
+                        } else
+                        {
+                            audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
+                            if (audioSession != null)
+                            {
+                                settings.StaticApplication = new AudioSessionSetting(audioSession);
+                            }
+                        }
+
+                        await SaveSettings();
+                        pluginController.AddActionToQueue(this);
+                        break;
+                    case "toggleblacklistapp":
+                        ToggleBlacklistApp(payload["value"].ToString());
                         break;
                     case "refreshapplications":
-                        Logger.Instance.LogMessage(TracingLevel.INFO, $"{GetType()} refreshApplications called");
-                        settings.StaticApplications = pluginController.audioManager.audioSessions;
-                        settings.BlacklistApplications = pluginController.audioManager.audioSessions;
-                        settings.WhitelistApplications = pluginController.audioManager.audioSessions;
-                        SaveSettings();
+                        RefreshApplications();
                         break;
                 }
             }

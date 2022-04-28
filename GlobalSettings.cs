@@ -9,19 +9,29 @@ namespace AudioMixer
 {
     class GlobalSettings
     {
+
         [JsonProperty(PropertyName = "volumeStep")]
-        public float VolumeStep { get; set; } = 10F;
+        public string VolumeStep { get; set; }
 
-        [JsonProperty(PropertyName = "staticApps")]
-        public List<ApplicationAction> StaticApps { get; set; }
+        [JsonProperty(PropertyName = "staticApplications")]
+        public List<AudioSessionSetting> StaticApplications { get; set; }
 
-        [JsonProperty(PropertyName = "blacklist")]
-        public string[] Blacklist { get; set; }
+        [JsonProperty(PropertyName = "blacklistApplications")]
+        public List<AudioSessionSetting> BlacklistApplications { get; set; }
 
-        [JsonProperty(PropertyName = "whitelist")]
-        public string[] Whitelist { get; set; }
+        [JsonProperty(PropertyName = "blacklistedApplications")]
+        public List<AudioSessionSetting> BlacklistedApplications { get; set; }
+
+        [JsonProperty(PropertyName = "whitelistApplications")]
+        public List<AudioSessionSetting> WhitelistApplications { get; set; }
+
+        [JsonProperty(PropertyName = "whitelistedApplications")]
+        public List<AudioSessionSetting> WhitelistedApplications { get; set; }
+
+        [JsonProperty(PropertyName = "inlineControlsEnabled")]
+        public bool InlineControlsEnabled { get; set; }
 
         [JsonProperty(PropertyName = "inlineControlsTimeout")]
-        public string[] InlineControlsTimeout { get; set; }
+        public int InlineControlsTimeout { get; set; }
     }
 }
