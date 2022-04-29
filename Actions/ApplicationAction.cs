@@ -222,6 +222,7 @@ namespace AudioMixer
             });
 
             this.processName = null;
+            Connection.SetDefaultImageAsync();
         }
 
         void SessionDisconnected(object sender, EventArgs e)

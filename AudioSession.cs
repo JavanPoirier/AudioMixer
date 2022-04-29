@@ -86,17 +86,11 @@ namespace AudioMixer
 
         public void Dispose()
         {
-            try
-            {
-                var applicationAction = this.pluginController.applicationActions.Find(actions => actions.processName == this.processName);
-                applicationAction.ReleaseAudioSession();
+            var applicationAction = this.pluginController.applicationActions.Find(actions => actions.processName == this.processName);
+            if (applicationAction != null) applicationAction.ReleaseAudioSession();
 
-                this.pluginController.audioManager.audioSessions.Remove(this);
-                pluginController.UpdateActions();
-            } catch (Exception ex)
-            {
-                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
-            }
+            this.pluginController.audioManager.audioSessions.Remove(this);
+            pluginController.UpdateActions();
         }
 
         public void OnVolumeChanged(float volume, bool isMuted)
