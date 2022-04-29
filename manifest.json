@@ -73,7 +73,7 @@
   "OS": [
     {
       "Platform": "windows",
-      "MinimumVersion": "7"
+      "MinimumVersion": "10"
     }
   ],
   "SDKVersion": 2,
