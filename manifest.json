@@ -65,10 +65,10 @@
   "Name": "Audio Mixer",
   "Description": "Allows for mixing of application volumes.",
   "Icon": "Images/Sliders",
-  "URL": "",
+  "URL": "https://github.com/JavanPoirier/AudioMixer",
   "Version": "1.0",
   "CodePath": "com.javanpoirier.audiomixer",
-  "Category": "Audio Mixer",
+  "Category": "Audio",
   "CategoryIcon": "Images/Sliders",
   "OS": [
     {
