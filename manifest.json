@@ -11,7 +11,7 @@
         }
       ],
       "SupportedInMultiActions": true,
-      "Tooltip": "This is used as application and/or control button.",
+      "Tooltip": "This is used as application placeholder and/or control button.",
       "UUID": "com.javanpoirier.audiomixer.application",
       "PropertyInspectorPath": "PropertyInspector/ApplicationAction.html"
     },
@@ -26,7 +26,7 @@
         }
       ],
       "SupportedInMultiActions": true,
-      "Tooltip": "This is used as application and/or control button.",
+      "Tooltip": "Volume mute control button.",
       "UUID": "com.javanpoirier.audiomixer.volumemute",
       "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     },
@@ -41,7 +41,7 @@
         }
       ],
       "SupportedInMultiActions": true,
-      "Tooltip": "This is used as application and/or control button.",
+      "Tooltip": "Volume down control button.",
       "UUID": "com.javanpoirier.audiomixer.volumeDown",
       "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     },
@@ -56,14 +56,14 @@
         }
       ],
       "SupportedInMultiActions": true,
-      "Tooltip": "This is used as application and/or control button.",
+      "Tooltip": "Volume up control button.",
       "UUID": "com.javanpoirier.audiomixer.volumeUp",
       "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     }
   ],
   "Author": "Javan Poirier",
   "Name": "Audio Mixer",
-  "Description": "Allows for mixing of application volumes.",
+  "Description": "A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independant process\\' volume as applications open and close. No need to statically assign a button to a single application, the application placeholders actions will update accordingly.",
   "Icon": "Images/Sliders",
   "URL": "https://github.com/JavanPoirier/AudioMixer",
   "Version": "1.0",
@@ -73,7 +73,7 @@
   "OS": [
     {
       "Platform": "windows",
-      "MinimumVersion": "10"
+      "MinimumVersion": "7"
     }
   ],
   "SDKVersion": 2,
