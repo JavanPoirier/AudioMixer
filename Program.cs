@@ -1,5 +1,4 @@
 ﻿using BarRaider.SdTools;
-using System;
 
 namespace AudioMixer
 {
