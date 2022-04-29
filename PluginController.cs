@@ -101,7 +101,8 @@ namespace AudioMixer
 
             applicationActions.ForEach(action =>
             {
-                action.ReleaseAudioSession();
+                // No need to reset icon as when the action is set in queue it will be reset if need be.
+                action.ReleaseAudioSession(false);
             });
 
             applicationActions.ForEach(action =>

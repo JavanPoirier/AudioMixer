@@ -39,7 +39,14 @@ This is due to the fact there is no way to discriminate between them during the 
 ---
 
 ## Known Issues
-Application's not showing/disapearing when launched/closed.
+**Icons flicker and jump around.** <br/>
+
+This occurs due to each action needing to check the state of others, along with the lack of tracking which would be resolved by forcing left to right. 
+This should not occur frequently and lasts for only a second.
+
+
+**Application's not showing/disapearing when launched/closed.** <br/>
+
 While testing I noticed this occuring with some apps, notably Spotify. Some apps will only notify the OS
 of their audio intentions once they actually start playing, not on open. So keep this in mind. You can see this for yourself, if you open up the Windows Volume Mixer.
 A possible solution to this would require quite the re-write, of watching applications rather than just audio sessions.

@@ -44,7 +44,6 @@ namespace AudioMixer
         private PluginController pluginController;
         private MMDevice device;
 
-        public string actionId;
         public readonly int processId;
         public readonly string processName;
         public readonly AudioSessionControl session;
@@ -67,6 +66,10 @@ namespace AudioMixer
                 // NOTE: Don't use MainWindowTitle as some applciations dynamically update it. Ex: Spotify changes it to the playing song.
                 processName = process.ProcessName;
 
+                if (!string.IsNullOrEmpty(session.IconPath))
+                {
+                    Logger.Instance.LogMessage(TracingLevel.DEBUG, session.IconPath);
+                }
                 // TODO:
                 //processIcon = Icon.ExtractAssociatedIcon(session.IconPath).ToBitmap(); "%windir%\\system32\\mmres.dll,-3030"
                 //Environment.ExpandEnvironmentVariables("%windir%\\system32\\mmres.dll");

@@ -87,11 +87,10 @@ namespace AudioMixer
         private float volume;
         private bool isMuted;
 
-        public string actionId = Guid.NewGuid().ToString();
         public string processName;
         public PluginSettings settings;
 
-        public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.FindAll(session => session.processName == this.processName); }
+        public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.FindAll(session => session.processName == processName); }
 
         public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
@@ -124,8 +123,8 @@ namespace AudioMixer
 
         public async Task SetAudioSession()
         {
-            // Previous audio session cleanup.
-            ReleaseAudioSession();
+            // Previous audio session cleanup. Do not update icon to prevent flashing if process remains the same.
+            ReleaseAudioSession(false);
 
             // If audio session is static...
             if (settings.StaticApplication != null)
@@ -138,10 +137,6 @@ namespace AudioMixer
 
                 // Self assign before re-assigning the last action.
                 this.processName = settings.StaticApplication.processName;
-                AudioSessions.ForEach(session =>
-                {
-                    session.actionId = this.actionId;
-                });
 
                 // If an application action DOES have the session we want, and it is not this action...
                 if (applicationAction != null && applicationAction != this)
@@ -156,21 +151,22 @@ namespace AudioMixer
                 // Get the next unassigned audio session. Assign it.
                 var audioSession = pluginController.audioManager.audioSessions.Find(session =>
                 {
+                    // Ensure it is not a blacklisted application.
                     var blacklistedApplication = settings.BlacklistedApplications.Find(application => application.processName == session.processName);
+                    if (blacklistedApplication != null) return false;
 
-                    // Ensure no application action has the session statically set.
+                    // Ensure no application action has the application statically set.
                     var staticApplicationAction = pluginController.applicationActions.Find(action => action.settings.StaticApplication?.processName == session.processName);
+                    if (staticApplicationAction != null) return false;
 
-                    return session.actionId == null && blacklistedApplication == null && staticApplicationAction == null;
+                    // Ensnsure no other application action has the application.
+                    var otherApplicationAction = pluginController.applicationActions.Find(action => action.processName == session.processName);
+                    if (otherApplicationAction != null) return false;
+
+                    return true;
                 });
 
-                if (audioSession != null) {
-                    this.processName = audioSession.processName;
-                    AudioSessions.ForEach(session =>
-                    {
-                        session.actionId = this.actionId;
-                    });
-                }
+                if (audioSession != null) this.processName = audioSession.processName;
             }
 
             if (AudioSessions.Count < 1)
@@ -212,17 +208,17 @@ namespace AudioMixer
             }
         }
 
-        public void ReleaseAudioSession()
+        public void ReleaseAudioSession(bool resetIcon = true)
         {
             AudioSessions.ForEach(session =>
             {
-                session.actionId = null;
                 session.SessionDisconnnected -= SessionDisconnected;
                 session.VolumeChanged -= VolumeChanged;
             });
 
             this.processName = null;
-            Connection.SetDefaultImageAsync();
+            // We only want to reset the icon if we don't know what it's next one will be.
+            if (resetIcon && settings.StaticApplication == null) Connection.SetDefaultImageAsync();
         }
 
         void SessionDisconnected(object sender, EventArgs e)
