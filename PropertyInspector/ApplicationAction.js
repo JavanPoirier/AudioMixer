@@ -68,6 +68,13 @@ function refreshApplications() {
     sendPayloadToPlugin(payload);
 }
 
+function resetSettings() {
+    let payload = {};
+
+    payload.property_inspector = 'resetSettings';
+    sendPayloadToPlugin(payload);
+}
+
 //function setSettings() {
 //    var payload = {};
 //    var elements = document.getElementsByClassName("sdProperty");

@@ -1,7 +1,7 @@
 ## Streamdeck Audio Mixer
 
-A dynamic mixer for all your applications with process icons. Control each independant process' volume as they open and close. No need to statically assign a button to
-a single applicaiton. The Stream Deck application placeholders will update accordingly. You can set static applications if you would like.
+A dynamic volume mixer that reflects the windows volume mixer with process icons. Control each independant process' volume as they open and close. No need to statically assign a button to
+a single application. The Stream Deck application placeholders will update accordingly. You can set static applications if you would like.
 
 ### Features
 	- Inline Controls
@@ -15,7 +15,7 @@ a single applicaiton. The Stream Deck application placeholders will update accor
 		
 ## Controls
 	- Blacklist An App
-		No need to head into Stream Deck and manually blacklist it. Hold down the key for 2 seconds and it will be
+		No need to head into Stream Deck and manually blacklist it. Hold down the key for 1.5 seconds and it will be
 		auto-magically added to your blacklist.
 
 ### Known Limitations

@@ -27,10 +27,10 @@ namespace AudioMixer
                     VolumeStep = VOLUME_STEP,
                     StaticApplication = null,
                     StaticApplications = new List<AudioSessionSetting>(),
-                    BlacklistApplicationName = String.Empty,
+                    BlacklistApplicationName = null,
                     BlacklistApplications = new List<AudioSessionSetting>(),
                     BlacklistedApplications = new List<AudioSessionSetting>(),
-                    WhitelistApplicationName = String.Empty,
+                    WhitelistApplicationName = null,
                     WhitelistApplications = new List<AudioSessionSetting>(),
                     WhitelistedApplications = new List<AudioSessionSetting>(),
                     InlineControlsEnabled = true,
@@ -78,7 +78,7 @@ namespace AudioMixer
 
         private PluginController pluginController = PluginController.Instance;
         private Utils.ControlType controlType = Utils.ControlType.Application;
-        private System.Timers.Timer timer = new System.Timers.Timer(2000);
+        private System.Timers.Timer timer = new System.Timers.Timer(1500);
         private bool timerElapsed = false;
         private GlobalSettings globalSettings;
 
@@ -116,9 +116,9 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.INFO, $"Destructor called");
             Connection.OnSendToPlugin -= OnSendToPlugin;
 
+            ReleaseAudioSession();
             pluginController.RemoveAction(this);
 
-            ReleaseAudioSession();
             timer.Dispose();
         }
 
@@ -364,7 +364,7 @@ namespace AudioMixer
             }
         }
 
-        private void ToggleBlacklistApp(string processName)
+        private async void ToggleBlacklistApp(string processName)
         {
             AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
             if (audioSession != null)
@@ -373,20 +373,19 @@ namespace AudioMixer
                 if (existingBlacklistedApp != null)
                 {
                     settings.BlacklistedApplications.Remove(existingBlacklistedApp);
-                    settings.BlacklistApplicationName = String.Empty;
+                    settings.BlacklistApplicationName = null;
                 }
                 else
                 {
                     settings.BlacklistedApplications.Add(new AudioSessionSetting(audioSession));
-                    settings.BlacklistApplicationName = String.Empty;
+                    settings.BlacklistApplicationName = null;
                 }
 
-                SetGlobalSettings();
-                SaveSettings();
+                await SetGlobalSettings();
+                await SaveSettings();
 
-                Connection.SendToPropertyInspectorAsync(JObject.FromObject(settings));
-
-                pluginController.UpdateActions();
+                //await Connection.SendToPropertyInspectorAsync(JObject.FromObject(settings));
+                //pluginController.UpdateActions();
             }
         }
 
@@ -398,11 +397,11 @@ namespace AudioMixer
             var distinctApplications = applications.DistinctBy(app => app.processName).ToList();
 
             settings.StaticApplications = distinctApplications;
-            globalSettings.BlacklistApplications = new List<AudioSessionSetting>(distinctApplications);
-            globalSettings.WhitelistApplications = new List<AudioSessionSetting>(distinctApplications);
+            settings.BlacklistApplications = new List<AudioSessionSetting>(distinctApplications);
+            settings.WhitelistApplications = new List<AudioSessionSetting>(distinctApplications);
 
-            globalSettings.BlacklistApplications.RemoveAll(app => !globalSettings.WhitelistApplications.Contains(app));
-            globalSettings.WhitelistApplications.RemoveAll(app => !globalSettings.BlacklistApplications.Contains(app));
+            settings.BlacklistApplications.RemoveAll(app => !settings.WhitelistApplications.Contains(app));
+            settings.WhitelistApplications.RemoveAll(app => !settings.BlacklistApplications.Contains(app));
 
             SetGlobalSettings();
             SaveSettings();
@@ -438,7 +437,8 @@ namespace AudioMixer
                     await SetGlobalSettings();
                 }
 
-                pluginController.AddActionToQueue(this);
+                //pluginController.AddActionToQueue(this);
+                pluginController.UpdateActions();
             }
             catch (Exception ex)
             {
@@ -498,6 +498,13 @@ namespace AudioMixer
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
         }
 
+        private async void ResetSettings()
+        {
+            settings = PluginSettings.CreateDefaultSettings();
+            await SetGlobalSettings();
+            await SaveSettings();
+        }
+
         private async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
         {
             var payload = e.Event.Payload;
@@ -532,6 +539,9 @@ namespace AudioMixer
                         break;
                     case "refreshapplications":
                         RefreshApplications();
+                        break;
+                    case "resetsettings":
+                        ResetSettings();
                         break;
                 }
             }

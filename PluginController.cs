@@ -96,6 +96,9 @@ namespace AudioMixer
 
         public void UpdateActions()
         {
+            actionQueue.Clear();
+            isSettingActions = false;
+
             applicationActions.ForEach(action =>
             {
                 action.ReleaseAudioSession();
