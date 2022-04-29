@@ -4,7 +4,7 @@ A dynamic volume mixer with process icons that reflects the windows volume mixer
 a single application, the application placeholders actions will update accordingly.
 
 **Tutorial Video:** Click to watch
-<a href="https://www.youtube.com/watch?v=26_o4-roURs" title="Link Title"><img src="https://github.com/JavanPoirier/AudioMixer/tree/master/Previews/1-preview.png" alt="Click to watch" /></a>
+<a href="https://www.youtube.com/watch?v=26_o4-roURs" title="Link Title"><img src="https://github.com/JavanPoirier/AudioMixer/blob/master/Previews/1-preview.png" alt="Click to watch" /></a>
 
 ---
 
