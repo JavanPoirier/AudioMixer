@@ -1,7 +1,7 @@
 # Stream Deck Audio Mixer
 
-A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independant process' volume as applications open and close. No need to statically assign a button to
-a single application, the application placeholders actions will update accordingly.
+A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independent process' volume as applications open and close. No need to statically assign a button to
+a single application, the application placeholder actions will update accordingly.
 
 **Tutorial Video:** Click to watch
 <a href="https://www.youtube.com/watch?v=26_o4-roURs" title="Link Title"><img src="https://github.com/JavanPoirier/AudioMixer/blob/master/Previews/1-preview.png" alt="Click to watch" /></a>
@@ -13,7 +13,7 @@ a single application, the application placeholders actions will update according
 Have a small stream deck? Instead of dedicating buttons to volume controls, only show controls when you select an application you want to control.
 
 ### Static Applications
-Want a application to stay on the same key regardless if it's open or not? Make it static.
+Want an application to stay on the same key regardless if it's open or not? Make it static.
 		
 ### Application Blacklisting
 Have an application you know you will never want to control? Add it to your blacklist to prevent it from ever being displayed on your Stream Deck.
