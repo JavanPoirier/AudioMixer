@@ -1,0 +1,35 @@
+# v1.2 - 02/05/2022
+
+Company/Developer: Javan Poirier
+
+User: Me@JavanPoirier.com
+
+Description: 
+A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independent process' volume as applications open and close. No need to statically assign a button to
+a single application, the application placeholder actions will update accordingly.
+
+IMPORTANT: To have the plugin work best and provide as many process icons as possible, please ensure you are running your Stream Deck app as an administrator. See "Troubleshooting" for more details.
+
+Tutorial Video:
+https://www.youtube.com/watch?v=26_o4-roURs
+
+Features: 
+Inline Controls
+Have a small stream deck? Instead of dedicating buttons to volume controls, only show controls when you select an application you want to control.
+
+Static Applications
+Want an application to stay on the same key regardless if it's open or not? Make it static.
+		
+Application Blacklisting
+Have an application you know you will never want to control? Add it to your blacklist to prevent it from being displayed on your Stream Deck.
+
+Release Notes: 
+
+- Fixed issue with the plugin not working due to administrator priveledges. 
+- Fixes issue with applications not populating on initialization.
+
+Support-Link: https://github.com/JavanPoirier/AudioMixer
+
+Operating System: Win 7+
+
+Category: Audio

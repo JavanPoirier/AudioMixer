@@ -3,6 +3,8 @@
 A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independent process' volume as applications open and close. No need to statically assign a button to
 a single application, the application placeholder actions will update accordingly.
 
+**IMPORTANT:** To have the plugin work best and provide as many process icons as possible, please ensure you are running your Stream Deck app as an administrator. See "Troubleshooting" for more details.
+
 **Tutorial Video:** Click to watch
 <a href="https://www.youtube.com/watch?v=26_o4-roURs" title="Link Title"><img src="https://github.com/JavanPoirier/AudioMixer/blob/master/Previews/1-preview.png" alt="Click to watch" /></a>
 
@@ -53,6 +55,15 @@ This should not occur frequently and lasts for only a second.
 While testing I noticed this occuring with some apps, notably Spotify. Some apps will only notify the OS
 of their audio intentions once they actually start playing, not on open. So keep this in mind. You can see this for yourself, if you open up the Windows Volume Mixer.
 A possible solution to this would require quite the re-write, of watching applications rather than just audio sessions.
+
+---
+
+## Troubleshooting
+
+**Some applications show as default app icons**
+
+Either the audio session actually does not have an associated icon, or more likely, you are not running your Stream Deck as an administrator.
+<img src="https://github.com/JavanPoirier/AudioMixer/blob/master/Images/StreamDeckRunAsAdmin.png" alt="StreamDeckRunAsAdmin" />
 
 ---
 

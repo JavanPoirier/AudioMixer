@@ -115,6 +115,19 @@ namespace AudioMixer
             }
         }
 
+        public static Image CreateDefaultAppKey()
+        {
+            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
+
+            Image muteImage = Image.FromFile(@"Images\Default@2x.png");
+            using (Graphics graph = Graphics.FromImage(clone))
+            {
+                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+            }
+
+            return clone;
+        }
+
         public static Image CreateMuteKey()
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
@@ -140,6 +153,7 @@ namespace AudioMixer
 
             return clone;
         }
+
         public static Image CreateVolumeDownKey()
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);

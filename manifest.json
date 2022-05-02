@@ -66,7 +66,7 @@
   "Description": "A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independant process\\' volume as applications open and close. No need to statically assign a button to a single application, the application placeholder actions will update accordingly.",
   "Icon": "Images/Sliders",
   "URL": "https://github.com/JavanPoirier/AudioMixer",
-  "Version": "1.1",
+  "Version": "1.2",
   "CodePath": "com.javanpoirier.audiomixer",
   "Category": "Audio",
   "CategoryIcon": "Images/Sliders",

@@ -214,7 +214,7 @@ namespace AudioMixer
                 catch (Exception ex)
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, ex.Message);
-                    SetAudioSession();
+                    pluginController.AddActionToQueue(this);
                 }
             }
         }
@@ -444,6 +444,7 @@ namespace AudioMixer
                     if (currentAction == null)
                     {
                         pluginController.AddAction(this);
+                        RefreshApplications();
                     }
 
                     pluginController.UpdateActions();

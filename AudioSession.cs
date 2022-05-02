@@ -47,7 +47,7 @@ namespace AudioMixer
         public readonly int processId;
         public readonly string processName;
         public readonly AudioSessionControl session;
-        public Bitmap processIcon { get; private set; }
+        public Bitmap processIcon { get; private set; } = new Bitmap(Utils.CreateDefaultAppKey());
 
         public event EventHandler SessionDisconnnected;
         public event EventHandler<VolumeChangedEventArgs> VolumeChanged;
@@ -66,17 +66,24 @@ namespace AudioMixer
                 // NOTE: Don't use MainWindowTitle as some applciations dynamically update it. Ex: Spotify changes it to the playing song.
                 processName = process.ProcessName;
 
-                if (!string.IsNullOrEmpty(session.IconPath))
+                // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName for SO resolution.
+                // processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
+
+                try 
                 {
-                    Logger.Instance.LogMessage(TracingLevel.DEBUG, session.IconPath);
+                    processIcon = Icon.ExtractAssociatedIcon(Utils.GetProcessName(process.Id)).ToBitmap();
+                } catch (Exception ex)
+                {
+                    var name = ex.GetType().Name;
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, name);
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
                 }
+
                 // TODO:
                 //processIcon = Icon.ExtractAssociatedIcon(session.IconPath).ToBitmap(); "%windir%\\system32\\mmres.dll,-3030"
                 //Environment.ExpandEnvironmentVariables("%windir%\\system32\\mmres.dll");
 
-                // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName for SO resolution.
-                //processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
-                processIcon = Icon.ExtractAssociatedIcon(Utils.GetProcessName(process.Id)).ToBitmap();
+                if (processIcon == null) processIcon = new Bitmap(Utils.CreateDefaultAppKey());
 
                 session.RegisterEventClient(this);
             } catch (Exception ex)
