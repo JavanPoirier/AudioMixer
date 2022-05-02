@@ -1,8 +1,7 @@
 ﻿using BarRaider.SdTools;
-using MoreLinq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace AudioMixer
 {
@@ -14,10 +13,8 @@ namespace AudioMixer
         private ApplicationAction selectedAction;
         private GlobalSettings globalSettings;
         private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
-
-        // We can only assign one action at a time.
-        private bool isSettingActions = false;
-        private List<ApplicationAction> actionQueue = new List<ApplicationAction>();
+        private ConcurrentQueue<ApplicationAction> actionQueue = new ConcurrentQueue<ApplicationAction>();
+        private readonly object updateActionsLock = new object();
 
         public ApplicationAction SelectedAction
         {
@@ -28,7 +25,8 @@ namespace AudioMixer
                 {
                     selectedAction.SetSelected(false);
                     selectedAction = null;
-                } else
+                }
+                else
                 {
                     // Reset previous selected action
                     if (selectedAction != null) selectedAction.SetSelected(false);
@@ -36,7 +34,7 @@ namespace AudioMixer
                     selectedAction = value;
                     if (selectedAction != null) selectedAction.SetSelected(true);
                 }
-             
+
                 SetActionControls();
             }
         }
@@ -66,7 +64,6 @@ namespace AudioMixer
         public void AddAction(ApplicationAction action)
         {
             applicationActions.Add(action);
-            AddActionToQueue(action);
             UpdateActions();
         }
 
@@ -76,39 +73,26 @@ namespace AudioMixer
             UpdateActions();
         }
 
-        public async void AddActionToQueue(ApplicationAction action)
+        public void AddActionToQueue(ApplicationAction action)
         {
-            actionQueue.Add(action);
-            if (!isSettingActions)
-            {
-                isSettingActions = true;
-                while (actionQueue.Count > 0)
-                {
-                    try
-                    {
-                        await actionQueue.First().SetAudioSession();
-                        actionQueue.RemoveAt(0);
-                    } catch { }
-                }
-                isSettingActions = false;
-            }
+            actionQueue.Enqueue(action);
+
+            ApplicationAction enqueuedAction;
+            while (actionQueue.TryDequeue(out enqueuedAction)) enqueuedAction.SetAudioSession();
         }
 
         public void UpdateActions()
         {
-            actionQueue.Clear();
-            isSettingActions = false;
-
-            applicationActions.ForEach(action =>
+            lock (updateActionsLock)
             {
+                actionQueue = new ConcurrentQueue<ApplicationAction>(applicationActions);
+
                 // No need to reset icon as when the action is set in queue it will be reset if need be.
-                action.ReleaseAudioSession(false);
-            });
+                applicationActions.ForEach(action => action.ReleaseAudioSession(false));
 
-            applicationActions.ForEach(action =>
-            {
-                AddActionToQueue(action);
-            });
+                ApplicationAction enqueuedAction;
+                while (actionQueue.TryDequeue(out enqueuedAction)) enqueuedAction.SetAudioSession();
+            }
         }
 
         private void SetActionControls()
@@ -122,11 +106,13 @@ namespace AudioMixer
                     controls[0].SetControlType(Utils.ControlType.Mute);
                     controls[1].SetControlType(Utils.ControlType.VolumeDown);
                     controls[2].SetControlType(Utils.ControlType.VolumeUp);
-                } else
+                }
+                else
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, "Not enough plugin actions available to place controls.");
                 }
-            } else
+            }
+            else
             {
                 // Reset all application actions.
                 applicationActions.ForEach(pluginAction => pluginAction.SetControlType(Utils.ControlType.Application));

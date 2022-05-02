@@ -87,6 +87,7 @@ namespace AudioMixer
         private float volume;
         private bool isMuted;
 
+        public readonly string coords;
         public string processName;
         public PluginSettings settings;
 
@@ -94,6 +95,12 @@ namespace AudioMixer
 
         public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
+            // This does not appear to work as expected when switching pages on the Stream Deck.
+            //Connection.SetDefaultImageAsync();
+
+            // However this works...
+            //Connection.SetImageAsync((string)null, 0, true);
+
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
                 settings = PluginSettings.CreateDefaultSettings();
@@ -106,6 +113,8 @@ namespace AudioMixer
 
             Connection.GetGlobalSettingsAsync();
             InitializeSettings();
+
+            coords = $"{payload.Coordinates.Column} {payload.Coordinates.Row}";
 
             Connection.OnSendToPlugin += OnSendToPlugin;
         }
@@ -121,7 +130,7 @@ namespace AudioMixer
             timer.Dispose();
         }
 
-        public async Task SetAudioSession()
+        public void SetAudioSession()
         {
             // Previous audio session cleanup. Do not update icon to prevent flashing if process remains the same.
             ReleaseAudioSession(false);
@@ -130,7 +139,8 @@ namespace AudioMixer
             if (settings.StaticApplication != null)
             {
                 // Before self assignin, ensure no other application action has the session.
-                var applicationAction = pluginController.applicationActions.Find(action => {
+                var applicationAction = pluginController.applicationActions.Find(action =>
+                {
                     if (action.AudioSessions.Count > 0) return action.AudioSessions[0].processName == settings.StaticApplication.processName;
                     return false;
                 });
@@ -155,13 +165,11 @@ namespace AudioMixer
                     var blacklistedApplication = settings.BlacklistedApplications.Find(application => application.processName == session.processName);
                     if (blacklistedApplication != null) return false;
 
-                    // Ensure no application action has the application statically set.
-                    var staticApplicationAction = pluginController.applicationActions.Find(action => action.settings.StaticApplication?.processName == session.processName);
-                    if (staticApplicationAction != null) return false;
-
-                    // Ensnsure no other application action has the application.
-                    var otherApplicationAction = pluginController.applicationActions.Find(action => action.processName == session.processName);
-                    if (otherApplicationAction != null) return false;
+                    // Ensure no application action has the application set, both statically and dynamically.
+                    var existingApplicationAction = pluginController.applicationActions.Find(action => 
+                        action.settings.StaticApplication?.processName == session.processName || action.processName == session.processName
+                    );
+                    if (existingApplicationAction != null) return false;
 
                     return true;
                 });
@@ -175,50 +183,56 @@ namespace AudioMixer
                 if (settings.StaticApplication != null)
                 {
                     var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
-                    await Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
-                } else
+                    Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+                }
+                else
                 {
                     Logger.Instance.LogMessage(TracingLevel.INFO, "No sessions available.");
-                    await Connection.SetDefaultImageAsync();
+                    Connection.SetImageAsync((string)null, 0, true);
                 }
             }
             else
             {
-                // NOTE: All audio sessions in one process are treated as one. If one changes volume so does the other.
-                // The reasoning for this comes down to possible unwanted multiple process icons being shown, and with no way
-                // of discriminating them I felt this was the best UX. Ex: Discord opens 2 audio sessions, 1 for comms, and the other for notifications.
-                // Anywho, this at least makes it easier for the user, I hope.
-
-                AudioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
-                AudioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
-
                 try
                 {
+                    // NOTE: All audio sessions in one process are treated as one. If one changes volume so does the other.
+                    // The reasoning for this comes down to possible unwanted multiple process icons being shown, and with no way
+                    // of discriminating them I felt this was the best UX. Ex: Discord opens 2 audio sessions, 1 for comms, and the other for notifications.
+                    // Anywho, this at least makes it easier for the user, I hope.
+
+                    AudioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
+                    AudioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
+
                     Boolean selected = pluginController.SelectedAction == this;
                     Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
 
-                    iconImage = Utils.CreateIconImage(AudioSessions[0].processIcon);
-                    volumeImage = Utils.CreateVolumeImage(AudioSessions[0].session.SimpleAudioVolume.Volume);
-                    await Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
-                } catch (Exception ex)
+                    iconImage = Utils.CreateIconImage(AudioSessions.First().processIcon);
+                    volumeImage = Utils.CreateVolumeImage(AudioSessions.First().session.SimpleAudioVolume.Volume);
+                    Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                }
+                // AudioSession may be released by the time the images are created/set. Retry re-setting session.
+                catch (Exception ex)
                 {
-                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message.ToString());
-                    return;
+                    Logger.Instance.LogMessage(TracingLevel.WARN, ex.Message);
+                    SetAudioSession();
                 }
             }
         }
 
         public void ReleaseAudioSession(bool resetIcon = true)
         {
-            AudioSessions.ForEach(session =>
+
+            // We only want to reset the icon if we don't know what it's next one will be.
+            if (resetIcon && settings.StaticApplication == null) Connection.SetImageAsync((string)null, 0, true); 
+
+            // Iterate through all audio sessions as by this time it could already been removed.
+            pluginController.audioManager.audioSessions.ForEach(session =>
             {
                 session.SessionDisconnnected -= SessionDisconnected;
                 session.VolumeChanged -= VolumeChanged;
             });
 
             this.processName = null;
-            // We only want to reset the icon if we don't know what it's next one will be.
-            if (resetIcon && settings.StaticApplication == null) Connection.SetDefaultImageAsync();
         }
 
         void SessionDisconnected(object sender, EventArgs e)
@@ -269,16 +283,20 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
+            if (processName == null) return;
+
             // If the timer of 3 seconds has passed.
             if (timerElapsed)
             {
                 ToggleBlacklistApp(processName);
-            } else
+            }
+            else
             {
                 if (controlType == Utils.ControlType.Application)
                 {
-                    pluginController.SelectedAction = this;
-                } else
+                    if (AudioSessions.Count > 0) pluginController.SelectedAction = this;
+                }
+                else
                 {
                     try
                     {
@@ -300,7 +318,7 @@ namespace AudioMixer
                                 else
                                 {
                                     newVolume = volume.Volume - (volumeStep);
-                                    volume.Volume = newVolume < 0F ? 0F : newVolume; 
+                                    volume.Volume = newVolume < 0F ? 0F : newVolume;
                                 }
                                 break;
                             case Utils.ControlType.VolumeUp:
@@ -318,7 +336,8 @@ namespace AudioMixer
                             session.session.SimpleAudioVolume.Volume = volume.Volume;
                             session.session.SimpleAudioVolume.Mute = volume.Mute;
                         });
-                    } catch (Exception ex)
+                    }
+                    catch (Exception ex)
                     {
                         Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
                     }
@@ -328,10 +347,12 @@ namespace AudioMixer
 
         public void SetSelected(Boolean selected)
         {
-            if (AudioSessions.Count > 0) {
+            if (AudioSessions.Count > 0)
+            {
                 Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
                 Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted));
-            } else
+            }
+            else
             {
                 if (settings?.StaticApplication != null)
                 {
@@ -344,7 +365,7 @@ namespace AudioMixer
         public void SetControlType(Utils.ControlType controlType)
         {
             this.controlType = controlType;
-            switch(controlType)
+            switch (controlType)
             {
                 case Utils.ControlType.Mute:
                     Connection.SetImageAsync(Utils.CreateMuteKey());
@@ -405,7 +426,8 @@ namespace AudioMixer
         }
 
         // Global settings are received on action initialization. Local settings are only received when changed in the PI.
-        public async override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload) {
+        public async override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload)
+        {
             try
             {
                 // Global Settings exist
@@ -421,10 +443,13 @@ namespace AudioMixer
                     await SaveSettings();
 
                     // Only once the settings are set do we add the action.
-                    if (!pluginController.applicationActions.Contains(this))
+                    var currentAction = pluginController.applicationActions.Find((action) => action.coords == coords);
+                    if (currentAction == null)
                     {
                         pluginController.AddAction(this);
                     }
+
+                    pluginController.UpdateActions();
                 }
                 else // Global settings do not exist, create new one and SAVE it
                 {
@@ -433,9 +458,6 @@ namespace AudioMixer
                     globalSettings.InlineControlsEnabled = true;
                     await SetGlobalSettings();
                 }
-
-                //pluginController.AddActionToQueue(this);
-                pluginController.UpdateActions();
             }
             catch (Exception ex)
             {
@@ -518,7 +540,8 @@ namespace AudioMixer
                         {
                             settings.StaticApplication = null;
                             settings.StaticApplicationName = null;
-                        } else
+                        }
+                        else
                         {
                             audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
                             if (audioSession != null)
