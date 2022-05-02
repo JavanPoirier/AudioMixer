@@ -401,9 +401,6 @@ namespace AudioMixer
 
                 await SetGlobalSettings();
                 await SaveSettings();
-
-                //await Connection.SendToPropertyInspectorAsync(JObject.FromObject(settings));
-                //pluginController.UpdateActions();
             }
         }
 
