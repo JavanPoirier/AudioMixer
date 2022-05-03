@@ -204,7 +204,7 @@
     <Content Include="Previews\2-preview.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SUBMISSIONS.txt" />
+    <Content Include="SUBMISSION.txt" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Images\Icon%402x.png">

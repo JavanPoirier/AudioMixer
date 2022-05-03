@@ -283,7 +283,8 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
-            if (processName == null) return;
+
+            if (controlType == Utils.ControlType.Application && processName == null) return;
 
             // If the timer of 3 seconds has passed.
             if (timerElapsed)
