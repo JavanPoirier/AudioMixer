@@ -13,27 +13,48 @@ namespace AudioMixer.Actions
     {
         private class PluginSettings
         {
+            public const string VOLUME_STEP = "10";
+
             public static PluginSettings CreateDefaultSettings()
             {
                 PluginSettings instance = new PluginSettings
                 {
-                    Volume = "1"
+                    GlobalLock = true,
+                    GlobalVolumeStep = VOLUME_STEP,
+                    IndependantVolumeStep = VOLUME_STEP,
+                    InlineControlsEnabled = true,
                 };
                 return instance;
             }
 
-            [JsonProperty(PropertyName = "volume")]
-            public String Volume { get; set; }
+            [JsonProperty(PropertyName = "globalLock")]
+            public bool GlobalLock { get; set; } = true;
+
+            [JsonProperty(PropertyName = "globalVolumeStep")]
+            public string GlobalVolumeStep { get; set; }
+
+            [JsonProperty(PropertyName = "independantVolumeStep")]
+            public string IndependantVolumeStep { get; set; }
+
+            [JsonProperty(PropertyName = "inlineControlsEnabled")]
+            public bool InlineControlsEnabled { get; set; }
         }
 
         private PluginController pluginController = PluginController.Instance;
         private System.Timers.Timer timer = new System.Timers.Timer(3000);
         private bool timerElapsed = false;
         private PluginSettings settings;
-        private float volumeStep = 0.1F;
+
+        private SDConnection connection;
+        private GlobalSettings globalSettings;
+
+        public readonly string coords;
 
         public VolumeDownAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
+            this.connection = connection;
+            Logger.Instance.LogMessage(TracingLevel.INFO, $"Initializing VolumeDown key at: {coords}");
+
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
                 this.settings = PluginSettings.CreateDefaultSettings();
@@ -44,6 +65,7 @@ namespace AudioMixer.Actions
                 this.settings = payload.Settings.ToObject<PluginSettings>();
             }
 
+            Connection.GetGlobalSettingsAsync();
             connection.SetImageAsync(Utils.CreateVolumeDownKey());
         }
 
@@ -84,6 +106,7 @@ namespace AudioMixer.Actions
                     }
 
                     float newVolume = 1F;
+                    float volumeStep = float.Parse(settings.GlobalLock ? globalSettings.VolumeStep : settings.IndependantVolumeStep) / 100;
                     if (volume.Mute) volume.Mute = !volume.Mute;
                     else
                     {
@@ -104,19 +127,73 @@ namespace AudioMixer.Actions
 
             }
         }
-        public override void OnTick() { }
 
-        public override void ReceivedSettings(ReceivedSettingsPayload payload)
+        // Global settings are received on action initialization. Local settings are only received when changed in the PI.
+        public override async void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload)
         {
-            Tools.AutoPopulateSettings(settings, payload.Settings);
-            SaveSettings();
+            try
+            {
+                // Global Settings exist
+                if (payload?.Settings != null && payload.Settings.Count > 0)
+                {
+                    globalSettings = payload.Settings.ToObject<GlobalSettings>();
+                    settings.GlobalVolumeStep = globalSettings.VolumeStep;
+                    settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
+                    await InitializeSettings();
+                    await SaveSettings();
+                }
+                else // Global settings do not exist, create new one and SAVE it
+                {
+                    Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
+                    globalSettings = new GlobalSettings();
+                    globalSettings.InlineControlsEnabled = true;
+                    await SetGlobalSettings();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
+            }
         }
 
-        public override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload) { }
+        private Task SetGlobalSettings()
+        {
+            globalSettings.VolumeStep = settings.GlobalVolumeStep;
+            globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
+
+            return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
+        }
+
+        private async Task InitializeSettings()
+        {
+            if (String.IsNullOrEmpty(settings.IndependantVolumeStep))
+            {
+                settings.IndependantVolumeStep = PluginSettings.VOLUME_STEP;
+            }
+
+            float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
+            await connection.SetTitleAsync($"-{volumeStep}");
+
+            await SaveSettings();
+        }
+
+        public override async void ReceivedSettings(ReceivedSettingsPayload payload)
+        {
+            Tools.AutoPopulateSettings(settings, payload.Settings);
+            await InitializeSettings();
+
+            await SetGlobalSettings();
+            await SaveSettings();
+
+            float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
+            await connection.SetTitleAsync($"-{volumeStep}");
+        }
 
         private Task SaveSettings()
         {
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
         }
+
+        public override void OnTick() { }
     }
 }

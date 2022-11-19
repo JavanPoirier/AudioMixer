@@ -8,19 +8,68 @@
     <title>AudioMixer Settings</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdpi.css">
     <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdtools.common.js"></script>
-    <script src="PluginActionPI.js"></script>
 </head>
 <body>
     <div class="sdpi-wrapper">
-        <!--<div type="range" class="sdpi-item sdShowTooltip" id="dvVolumeStep">
+        <div class="sdpi-item" id="dvGlobalLock">
+            <div class="sdpi-item-label">Global Lock</div>
+            <div class="sdpi-item-value">
+                <input id="globalLock" type="checkbox" value="true" class="sdProperty sdCheckbox" oninput="setSettings()">
+                <label for="globalLock" class="sdpi-item-label"><span></span>(disable for independant control)</label>
+            </div>
+        </div>
+
+        <div type="range" class="sdpi-item sdShowTooltip" id="dvIndependantVolumeStep">
             <div class="sdpi-item-label">Volume Step</div>
             <div class="sdpi-item-value">
                 <span class="clickable" value="1">1</span>
-                <input type="range" min="1" max="25" value="20" class="sdProperty" oninput="setSettings()" id="volumeStep">
+                <input type="range" min="1" max="25" data-suffix=" +/-" value="10" class="sdProperty" oninput="setSettings()" id="independantVolumeStep">
                 <span class="clickable" value="25">25</span>
-                <label for="volumeStep" class="rangeLabel"></label>
+                <label for="independantVolumeStep" class="rangeLabel"></label>
             </div>
-        </div>-->
+        </div>
+        <div class="sdpi-info-label hidden" style="top: -1000px;" value="">Tooltip</div>
+        <div class="sdpi-item">
+            <span class="titleAlignedSmall" style="padding-left: 100px !important;">(Use left/right keys for added precision)</span>
+        </div>
+
+        <div class="sdpi-heading">Global Settings</div>
+
+        <div type="range" class="sdpi-item sdShowTooltip" id="dvGlobalVolumeStep">
+            <div class="sdpi-item-label">Volume Step</div>
+            <div class="sdpi-item-value">
+                <span class="clickable" value="1">1</span>
+                <input type="range" min="1" max="25" data-suffix=" +/-" value="10" class="sdProperty" oninput="setSettings()" id="globalVolumeStep">
+                <span class="clickable" value="25">25</span>
+                <label for="globalVolumeStep" class="rangeLabel"></label>
+            </div>
+        </div>
+        <div class="sdpi-info-label hidden" style="top: -1000px;" value="">Tooltip</div>
+        <div class="sdpi-item">
+            <span class="titleAlignedSmall" style="padding-left: 100px !important;">(Use left/right keys for added precision)</span>
+        </div>
+
+
+        <div class="sdpi-item" id="dvInlineControls">
+            <div class="sdpi-item-label">Inline Controls</div>
+            <div class="sdpi-item-value">
+                <input id="inlineControlsEnabled" type="checkbox" value="" class="sdProperty sdCheckbox" oninput="setSettings()">
+                <label for="inlineControlsEnabled" class="sdpi-item-label"><span></span>Show inline controls</label>
+            </div>
+        </div>
+        <div class="sdpi-item">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <details class="sdpi-item-value">
+                <summary>What are inline controls?</summary>
+                <p>
+                    Inline controls have application placeholders become the mute, volume up and volume down once an application has been selected.
+                </p>
+                <p>
+                    This is ideal for 2x3 (small) stream decks,
+                    however it requires at least 4 application placeholders.
+                </p>
+            </details>
+        </div>
     </div>
 </body>
 </html>
