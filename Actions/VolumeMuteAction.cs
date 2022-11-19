@@ -17,13 +17,9 @@ namespace AudioMixer.Actions
             {
                 PluginSettings instance = new PluginSettings
                 {
-                    Volume = "1"
                 };
                 return instance;
             }
-
-            [JsonProperty(PropertyName = "volume")]
-            public String Volume { get; set; }
         }
 
         public readonly SDConnection connection;
@@ -102,7 +98,6 @@ namespace AudioMixer.Actions
 
             }
         }
-        public override void OnTick() { }
 
         public override void ReceivedSettings(ReceivedSettingsPayload payload)
         {
@@ -116,5 +111,7 @@ namespace AudioMixer.Actions
         {
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
         }
+
+        public override void OnTick() { }
     }
 }

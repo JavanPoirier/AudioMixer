@@ -479,30 +479,27 @@ namespace AudioMixer
             return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
         }
 
-        private Task InitializeSettings()
+        private async Task InitializeSettings()
         {
             if (String.IsNullOrEmpty(settings.VolumeStep))
             {
                 settings.VolumeStep = PluginSettings.VOLUME_STEP;
-                SaveSettings();
             }
 
             if (settings.BlacklistApplications == null)
             {
                 settings.BlacklistApplications = new List<AudioSessionSetting>();
-                SaveSettings();
             }
 
             if (settings.BlacklistedApplications == null)
             {
                 settings.BlacklistedApplications = new List<AudioSessionSetting>();
-                SaveSettings();
             }
 
-            return Task.CompletedTask;
+            await SaveSettings();
         }
 
-        public async override void ReceivedSettings(ReceivedSettingsPayload payload)
+        public override async void ReceivedSettings(ReceivedSettingsPayload payload)
         {
             Tools.AutoPopulateSettings(settings, payload.Settings);
             await InitializeSettings();
