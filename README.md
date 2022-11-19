@@ -93,3 +93,13 @@ Resources:
 * StreamDeck-Tools samples and tutorial: https://github.com/BarRaider/streamdeck-tools
 * EasyPI library (for working with Property Inspector): https://github.com/BarRaider/streamdeck-easypi
 * Stream Deck Distribution Tool: https://developer.elgato.com/documentation/stream-deck/sdk/packaging/
+
+## Installing locally
+
+1. Open an admin terminal.
+2. Navigate to repo directory.
+3. Ensure a build is created for your target (DEBUG|RELEASE)
+4. Run "./install.bat DEBUG com.javanpoirier.audiomixer" 
+
+
+<a href="https://www.flaticon.com/free-icons/headset" title="headset icons">Headset icons created by HideMaru - Flaticon</a>
