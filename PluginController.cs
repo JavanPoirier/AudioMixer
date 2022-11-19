@@ -21,7 +21,7 @@ namespace AudioMixer
             get { return selectedAction; }
             set
             {
-                if (value == selectedAction)
+                if (value != null && value == selectedAction)
                 {
                     selectedAction.SetSelected(false);
                     selectedAction = null;
@@ -70,6 +70,12 @@ namespace AudioMixer
         public void RemoveAction(ApplicationAction action)
         {
             applicationActions.Remove(action);
+
+            if (SelectedAction == action)
+            {
+                SelectedAction = null;
+            }
+
             UpdateActions();
         }
 
@@ -85,6 +91,8 @@ namespace AudioMixer
         {
             lock (updateActionsLock)
             {
+                if (globalSettings != null && globalSettings.InlineControlsEnabled) SelectedAction = null;
+
                 actionQueue = new ConcurrentQueue<ApplicationAction>(applicationActions);
 
                 // No need to reset icon as when the action is set in queue it will be reset if need be.
