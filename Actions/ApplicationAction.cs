@@ -9,6 +9,8 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
 using MoreLinq.Extensions;
+using Sentry;
+using System.Diagnostics;
 
 namespace AudioMixer
 {
@@ -24,6 +26,7 @@ namespace AudioMixer
             {
                 PluginSettings instance = new PluginSettings
                 {
+                    DeviceId = null,
                     VolumeStep = VOLUME_STEP,
                     StaticApplication = null,
                     StaticApplications = new List<AudioSessionSetting>(),
@@ -38,6 +41,9 @@ namespace AudioMixer
                 };
                 return instance;
             }
+
+            [JsonProperty(PropertyName = "deviceId")]
+            public string DeviceId { get; set; }
 
             [JsonProperty(PropertyName = "volumeStep")]
             public string VolumeStep { get; set; }
@@ -95,11 +101,24 @@ namespace AudioMixer
 
         public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
-            // This does not appear to work as expected when switching pages on the Stream Deck.
-            //Connection.SetDefaultImageAsync();
+            if (pluginController.deviceId == null)
+            {
+                pluginController.deviceId = Connection.DeviceId;
 
-            // However this works...
-            //Connection.SetImageAsync((string)null, 0, true);
+                SentrySdk.ConfigureScope(scope =>
+                {
+                    scope.User = new User
+                    {
+                        Id = pluginController.deviceId
+                    };
+                });
+
+                SentrySdk.CaptureMessage("Initialized", scope => scope.TransactionName = "ApplicationAction", SentryLevel.Info);
+            }
+
+            coords = $"{payload.Coordinates.Column} {payload.Coordinates.Row}";
+            Logger.Instance.LogMessage(TracingLevel.INFO, $"Initializing key at: {coords}");
+            Connection.LogSDMessage($"Initializing key at: {coords}");
 
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
@@ -113,8 +132,6 @@ namespace AudioMixer
 
             Connection.GetGlobalSettingsAsync();
             InitializeSettings();
-
-            coords = $"{payload.Coordinates.Column} {payload.Coordinates.Row}";
 
             Connection.OnSendToPlugin += OnSendToPlugin;
         }
@@ -130,8 +147,20 @@ namespace AudioMixer
             timer.Dispose();
         }
 
+        // NOTE:
+        // This does not appear to work as expected when switching pages on the Stream Deck.
+        //  Connection.SetDefaultImageAsync();
+        //
+        // However this works...
+        //  Connection.SetImageAsync((string)null, 0, true);
         public void SetAudioSession()
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Setting audio session",
+                category: "ApplicationAction",
+                level: BreadcrumbLevel.Info
+            );
+
             // Previous audio session cleanup. Do not update icon to prevent flashing if process remains the same.
             ReleaseAudioSession(false);
 
@@ -155,6 +184,16 @@ namespace AudioMixer
                     applicationAction.ReleaseAudioSession();
                     pluginController.AddActionToQueue(applicationAction);
                 }
+
+                SentrySdk.AddBreadcrumb(
+                    message: "Set static audio session",
+                    category: "ApplicationAction",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> {
+                        { "processName", $"{this.processName}" },
+                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                    }
+                 );
             }
             else
             {
@@ -166,7 +205,7 @@ namespace AudioMixer
                     if (blacklistedApplication != null) return false;
 
                     // Ensure no application action has the application set, both statically and dynamically.
-                    var existingApplicationAction = pluginController.applicationActions.Find(action => 
+                    var existingApplicationAction = pluginController.applicationActions.Find(action =>
                         action.settings.StaticApplication?.processName == session.processName || action.processName == session.processName
                     );
                     if (existingApplicationAction != null) return false;
@@ -175,6 +214,15 @@ namespace AudioMixer
                 });
 
                 if (audioSession != null) this.processName = audioSession.processName;
+
+                SentrySdk.AddBreadcrumb(
+                    message: "Set new audio session",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> {
+                        { "processName", $"{this.processName}" },
+                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                    }
+                 );
             }
 
             if (AudioSessions.Count < 1)
@@ -184,10 +232,24 @@ namespace AudioMixer
                 {
                     var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
                     Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+
+                    SentrySdk.AddBreadcrumb(
+                        message: "Set unavailable static session",
+                        level: BreadcrumbLevel.Info,
+                        data: new Dictionary<string, string> {
+                            { "processName", $"{this.processName}" },
+                            { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                        }
+                    );
                 }
                 else
                 {
                     Logger.Instance.LogMessage(TracingLevel.INFO, "No sessions available.");
+                    SentrySdk.AddBreadcrumb(
+                        message: "No sessions available",
+                        level: BreadcrumbLevel.Info
+                    );
+
                     Connection.SetImageAsync((string)null, 0, true);
                 }
             }
@@ -214,6 +276,8 @@ namespace AudioMixer
                 catch (Exception ex)
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, ex.Message);
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+
                     pluginController.AddActionToQueue(this);
                 }
             }
@@ -221,9 +285,17 @@ namespace AudioMixer
 
         public void ReleaseAudioSession(bool resetIcon = true)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Releasing audio session",
+                level: BreadcrumbLevel.Info,
+                 data: new Dictionary<string, string> {
+                            { "processName", $"{this.processName}" },
+                            { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                        }
+            );
 
             // We only want to reset the icon if we don't know what it's next one will be.
-            if (resetIcon && settings.StaticApplication == null) Connection.SetImageAsync((string)null, 0, true); 
+            if (resetIcon && settings.StaticApplication == null) Connection.SetImageAsync((string)null, 0, true);
 
             // Iterate through all audio sessions as by this time it could already been removed.
             pluginController.audioManager.audioSessions.ForEach(session =>
@@ -237,11 +309,35 @@ namespace AudioMixer
 
         void SessionDisconnected(object sender, EventArgs e)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Session disconnected",
+                level: BreadcrumbLevel.Info,
+                 data: new Dictionary<string, string> {
+                    { "processName", $"{this.processName}" },
+                    { "controlType", $"{controlType}" },
+                    { "isMuted", $"{this.isMuted}" },
+                    { "currentVolume", $"{this.volume}" },
+                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                }
+            );
+
             if (AudioSessions.Count < 2) pluginController.AddActionToQueue(this);
         }
 
         void VolumeChanged(object sender, AudioSession.VolumeChangedEventArgs e)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Volume changed",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> {
+                    { "processName", $"{this.processName}" },
+                    { "controlType", $"{controlType}" },
+                    { "isMuted", $"{this.isMuted}" },
+                    { "currentVolume", $"{this.volume}" },
+                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                }
+            );
+
             AudioSession senderSession = sender as AudioSession;
 
             Boolean selected = pluginController.SelectedAction == this;
@@ -267,6 +363,18 @@ namespace AudioMixer
 
         public override void KeyPressed(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key pressed",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> {
+                    { "processName", $"{this.processName}" },
+                    { "controlType", $"{controlType}" },
+                    { "isMuted", $"{this.isMuted}" },
+                    { "currentVolume", $"{this.volume}" },
+                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                }
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
 
             timerElapsed = false;
@@ -280,6 +388,18 @@ namespace AudioMixer
 
         public override void KeyReleased(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key released",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> {
+                    { "processName", $"{this.processName}" },
+                    { "controlType", $"{controlType}" },
+                    { "isMuted", $"{this.isMuted}" },
+                    { "currentVolume", $"{this.volume}" },
+                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                }
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
@@ -289,6 +409,14 @@ namespace AudioMixer
             // If the timer of 3 seconds has passed.
             if (timerElapsed)
             {
+                SentrySdk.AddBreadcrumb(
+                    message: "Add to blacklist",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> {
+                        { "processName", $"{this.processName}" },
+                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                    }
+                );
                 ToggleBlacklistApp(processName);
             }
             else
@@ -304,6 +432,9 @@ namespace AudioMixer
                         SimpleAudioVolume volume = pluginController.SelectedAction.AudioSessions[0].session.SimpleAudioVolume;
                         if (volume == null)
                         {
+                            pluginController.SelectedAction = null;
+
+                            // TODO: Can be removed?
                             throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
                         }
 
@@ -341,6 +472,7 @@ namespace AudioMixer
                     catch (Exception ex)
                     {
                         Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
+                        SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
                     }
                 }
             }
@@ -407,6 +539,11 @@ namespace AudioMixer
 
         public void RefreshApplications()
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Refresh applications",
+                level: BreadcrumbLevel.Info
+            );
+
             var applications = new List<AudioSession>(pluginController.audioManager.audioSessions).ConvertAll(session => new AudioSessionSetting(session));
 
             // Remove duplicate process'
@@ -426,6 +563,12 @@ namespace AudioMixer
         // Global settings are received on action initialization. Local settings are only received when changed in the PI.
         public async override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Received global settings",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
+            );
+
             try
             {
                 // Global Settings exist
@@ -453,8 +596,10 @@ namespace AudioMixer
                 else // Global settings do not exist, create new one and SAVE it
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                    globalSettings = new GlobalSettings();
-                    globalSettings.InlineControlsEnabled = true;
+                    globalSettings = new GlobalSettings
+                    {
+                        InlineControlsEnabled = true
+                    };
                     await SetGlobalSettings();
                 }
             }
@@ -501,6 +646,12 @@ namespace AudioMixer
 
         public override async void ReceivedSettings(ReceivedSettingsPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Received settings",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
+            );
+
             Tools.AutoPopulateSettings(settings, payload.Settings);
             await InitializeSettings();
 
@@ -510,11 +661,24 @@ namespace AudioMixer
 
         private Task SaveSettings()
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Save settings",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
+            );
+
+            settings.DeviceId = pluginController.deviceId;
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
         }
 
         private async void ResetSettings()
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Reset settings",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
+            );
+
             settings = PluginSettings.CreateDefaultSettings();
             await SetGlobalSettings();
             await SaveSettings();
@@ -523,6 +687,19 @@ namespace AudioMixer
         private async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
         {
             var payload = e.Event.Payload;
+
+            SentrySdk.AddBreadcrumb(
+                message: "Received data from property inspector",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string>{
+                    { "processName", $"{this.processName}" },
+                    { "controlType", $"{controlType}" },
+                    { "isMuted", $"{this.isMuted}" },
+                    { "currentVolume", $"{this.volume}" },
+                    { "applicationActions", $"{pluginController.applicationActions.Count()}" },
+                    { "payload", payload["value"].ToString() }
+                 }
+            );
 
             if (payload["property_inspector"] != null)
             {

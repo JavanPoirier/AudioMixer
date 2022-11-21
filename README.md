@@ -101,5 +101,12 @@ Resources:
 3. Ensure a build is created for your target (DEBUG|RELEASE)
 4. Run "./install.bat DEBUG com.javanpoirier.audiomixer" 
 
+## Development
+
+### Logs
+There are a few  ways to log...
+	1. StreamDeck Logger - Connection.LogSDMessage() will log to a file to `AppData\Roaming\Elgato\StreamDeck\logs\com.javanpoirier.audiomixer0` with 0 being 0-9.
+	1. BarRaider Logger - Logger.Instance.LogMessage() will log to a file within the plugin install directory `AppData\Roaming\Elgato\StreamDeck\Plugins\com.javanpoirier.audiomixer.sdPlugin\pluginLog.log`
+	1. Sentry - Refer to Sentry documentation.
 
 <a href="https://www.flaticon.com/free-icons/headset" title="headset icons">Headset icons created by HideMaru - Flaticon</a>

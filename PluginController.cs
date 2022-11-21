@@ -1,12 +1,16 @@
 ﻿using BarRaider.SdTools;
+using Newtonsoft.Json.Linq;
+using streamdeck_client_csharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace AudioMixer
 {
     public class PluginController : IDisposable
     {
+        public string deviceId;
         public AudioManager audioManager;
         public List<ApplicationAction> applicationActions = new List<ApplicationAction>();
 
@@ -134,6 +138,11 @@ namespace AudioMixer
             {
                 globalSettings = payload.Settings.ToObject<GlobalSettings>();
             }
+        }
+
+        static public async Task ResetGlobalSettings()
+        {
+            await GlobalSettingsManager.Instance.SetGlobalSettings(JObject.FromObject(GlobalSettings.CreateDefaultSettings()));
         }
     }
 }

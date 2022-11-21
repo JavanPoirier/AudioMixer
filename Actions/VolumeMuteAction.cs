@@ -2,6 +2,7 @@
 using NAudio.CoreAudioApi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Sentry;
 using System;
 using System.Threading.Tasks;
 using System.Timers;
@@ -35,6 +36,12 @@ namespace AudioMixer.Actions
         {
             this.connection = connection;
 
+            SentrySdk.AddBreadcrumb(
+                message: "Initializiing VolumeMute key",
+                category: "VolumeMute",
+                level: BreadcrumbLevel.Info
+            );
+
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
                 this.settings = PluginSettings.CreateDefaultSettings();
@@ -54,6 +61,12 @@ namespace AudioMixer.Actions
 
         public override void KeyPressed(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key pressed",
+                category: "VolumeMute",
+                level: BreadcrumbLevel.Info
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
 
             timerElapsed = false;
@@ -67,6 +80,12 @@ namespace AudioMixer.Actions
 
         public override void KeyReleased(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key released",
+                category: "VolumeMute",
+                level: BreadcrumbLevel.Info
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();

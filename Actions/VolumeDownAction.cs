@@ -2,6 +2,7 @@
 using NAudio.CoreAudioApi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Sentry;
 using System;
 using System.Threading.Tasks;
 using System.Timers;
@@ -48,12 +49,15 @@ namespace AudioMixer.Actions
         private SDConnection connection;
         private GlobalSettings globalSettings;
 
-        public readonly string coords;
-
         public VolumeDownAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
             this.connection = connection;
-            Logger.Instance.LogMessage(TracingLevel.INFO, $"Initializing VolumeDown key at: {coords}");
+
+            SentrySdk.AddBreadcrumb(
+                message: "Initializiing VolumeDown key",
+                category: "VolumeDown",
+                level: BreadcrumbLevel.Info
+            );
 
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
@@ -75,6 +79,12 @@ namespace AudioMixer.Actions
 
         public override void KeyPressed(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key pressed",
+                category: "VolumeDown",
+                level: BreadcrumbLevel.Info
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
 
             timerElapsed = false;
@@ -88,6 +98,12 @@ namespace AudioMixer.Actions
 
         public override void KeyReleased(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+               message: "Key released",
+               category: "VolumeUp",
+               level: BreadcrumbLevel.Info
+           );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
@@ -145,8 +161,10 @@ namespace AudioMixer.Actions
                 else // Global settings do not exist, create new one and SAVE it
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                    globalSettings = new GlobalSettings();
-                    globalSettings.InlineControlsEnabled = true;
+                    globalSettings = new GlobalSettings
+                    {
+                        InlineControlsEnabled = true
+                    };
                     await SetGlobalSettings();
                 }
             }

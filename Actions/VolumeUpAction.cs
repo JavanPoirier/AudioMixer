@@ -2,6 +2,7 @@
 using NAudio.CoreAudioApi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Sentry;
 using System;
 using System.Threading.Tasks;
 using System.Timers;
@@ -48,12 +49,15 @@ namespace AudioMixer.Actions
         private SDConnection connection;
         private GlobalSettings globalSettings;
 
-        public readonly string coords;
-
         public VolumeUpAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
             this.connection = connection;
-            Logger.Instance.LogMessage(TracingLevel.INFO, $"Initializing VolumeUp key at: {coords}");
+
+            SentrySdk.AddBreadcrumb(
+                message: "Initializiing VolumeUp key",
+                category: "VolumeUp",
+                level: BreadcrumbLevel.Info
+            );
 
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
@@ -74,6 +78,12 @@ namespace AudioMixer.Actions
 
         public override void KeyPressed(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key pressed",
+                category: "VolumeUp",
+                level: BreadcrumbLevel.Info
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
 
             timerElapsed = false;
@@ -87,6 +97,12 @@ namespace AudioMixer.Actions
 
         public override void KeyReleased(KeyPayload payload)
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Key released",
+                category: "VolumeUp",
+                level: BreadcrumbLevel.Info
+            );
+
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
@@ -98,6 +114,7 @@ namespace AudioMixer.Actions
             {
                 try
                 {
+                    // TODO: Check if an action is selected first.
                     SimpleAudioVolume volume = pluginController.SelectedAction.AudioSessions[0].session.SimpleAudioVolume;
                     if (volume == null)
                     {

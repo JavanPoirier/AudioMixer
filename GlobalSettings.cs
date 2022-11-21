@@ -7,8 +7,25 @@ using System.Threading.Tasks;
 
 namespace AudioMixer
 {
-    class GlobalSettings
+    public class GlobalSettings
     {
+        public const string VOLUME_STEP = "10";
+        public const int INLINE_CONTROLS_TIMEOUT = 0;
+        public static GlobalSettings CreateDefaultSettings()
+        {
+            GlobalSettings instance = new GlobalSettings
+            {
+                VolumeStep = VOLUME_STEP,
+                StaticApplications = new List<AudioSessionSetting>(),
+                BlacklistApplications = new List<AudioSessionSetting>(),
+                BlacklistedApplications = new List<AudioSessionSetting>(),
+                WhitelistApplications = new List<AudioSessionSetting>(),
+                WhitelistedApplications = new List<AudioSessionSetting>(),
+                InlineControlsEnabled = true,
+                InlineControlsTimeout = INLINE_CONTROLS_TIMEOUT,
+            };
+            return instance;
+        }
 
         [JsonProperty(PropertyName = "volumeStep")]
         public string VolumeStep { get; set; }
