@@ -100,7 +100,7 @@ namespace AudioMixer.Actions
         {
             SentrySdk.AddBreadcrumb(
                message: "Key released",
-               category: "VolumeUp",
+               category: "VolumeDown",
                level: BreadcrumbLevel.Info
            );
 
@@ -115,7 +115,7 @@ namespace AudioMixer.Actions
             {
                 try
                 {
-                    SimpleAudioVolume volume = pluginController.SelectedAction.AudioSessions[0].session.SimpleAudioVolume;
+                    SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
                     if (volume == null)
                     {
                         throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
@@ -139,6 +139,7 @@ namespace AudioMixer.Actions
                 catch (Exception ex)
                 {
                     Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDown"; });
                 }
 
             }
@@ -171,6 +172,7 @@ namespace AudioMixer.Actions
             catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDown"; });
             }
         }
 

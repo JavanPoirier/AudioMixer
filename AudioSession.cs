@@ -5,6 +5,8 @@ using System.Drawing;
 using NAudio.CoreAudioApi.Interfaces;
 using BarRaider.SdTools;
 using Newtonsoft.Json;
+using Sentry;
+using System.Collections.Generic;
 
 namespace AudioMixer
 {
@@ -59,6 +61,13 @@ namespace AudioMixer
             this.session = session;
 
             try {
+                SentrySdk.AddBreadcrumb(
+                    message: "Creating audio session",
+                    category: "AudioSession",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> { { "session", session.ToString() } }
+                );
+
                 Process process = Process.GetProcessById((int)session.GetProcessID);
 
                 processId = process.Id;
@@ -71,26 +80,64 @@ namespace AudioMixer
 
                 try 
                 {
-                    processIcon = Icon.ExtractAssociatedIcon(Utils.GetProcessName(process.Id)).ToBitmap();
+                    var processFilePath = Utils.GetProcessName(process.Id);
+
+                    SentrySdk.AddBreadcrumb(
+                        message: "Retrieved process file path",
+                        category: "AudioSession",
+                        level: BreadcrumbLevel.Info,
+                        data: new Dictionary<string, string> {
+                            { "session", session.ToString() },
+                            { "processName", processName },
+                            { "processFilePath", processFilePath }
+                        }
+                    );
+
+                    processIcon = Icon.ExtractAssociatedIcon(processFilePath).ToBitmap();
                 } catch (Exception ex)
                 {
                     var name = ex.GetType().Name;
                     Logger.Instance.LogMessage(TracingLevel.ERROR, name);
                     Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "AudioSession"; });
                 }
 
                 // TODO:
                 //processIcon = Icon.ExtractAssociatedIcon(session.IconPath).ToBitmap(); "%windir%\\system32\\mmres.dll,-3030"
                 //Environment.ExpandEnvironmentVariables("%windir%\\system32\\mmres.dll");
 
-                if (processIcon == null) processIcon = new Bitmap(Utils.CreateDefaultAppKey());
+                if (processIcon == null)
+                {
+                    SentrySdk.AddBreadcrumb(
+                        message: "Unable to find process icon",
+                        category: "AudioSession",
+                        level: BreadcrumbLevel.Info,
+                        data: new Dictionary<string, string> {
+                            { "session", session.ToString() },
+                            { "processName", processName }
+                        }
+                    );
+
+                    processIcon = new Bitmap(Utils.CreateDefaultAppKey());
+                }
 
                 session.RegisterEventClient(this);
+
+                SentrySdk.AddBreadcrumb(
+                       message: "Created session",
+                       category: "AudioSession",
+                       level: BreadcrumbLevel.Info,
+                       data: new Dictionary<string, string> {
+                            { "session", session.ToString() },
+                            { "processName", processName }
+                       }
+                   );
             } catch (Exception ex)
             {
                 var name = ex.GetType().Name;
                 Logger.Instance.LogMessage(TracingLevel.ERROR, name);
                 Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "AudioSession"; });
             }
         }
 

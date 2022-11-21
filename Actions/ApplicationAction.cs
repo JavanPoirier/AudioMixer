@@ -119,6 +119,11 @@ namespace AudioMixer
             coords = $"{payload.Coordinates.Column} {payload.Coordinates.Row}";
             Logger.Instance.LogMessage(TracingLevel.INFO, $"Initializing key at: {coords}");
             Connection.LogSDMessage($"Initializing key at: {coords}");
+            SentrySdk.AddBreadcrumb(
+               message: "Initializiing Application key",
+               category: "ApplicationAction",
+               level: BreadcrumbLevel.Info
+             );
 
             if (payload.Settings == null || payload.Settings.Count == 0)
             {
@@ -217,6 +222,7 @@ namespace AudioMixer
 
                 SentrySdk.AddBreadcrumb(
                     message: "Set new audio session",
+                    category: "ApplicationAction",
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
                         { "processName", $"{this.processName}" },
@@ -235,6 +241,7 @@ namespace AudioMixer
 
                     SentrySdk.AddBreadcrumb(
                         message: "Set unavailable static session",
+                        category: "ApplicationAction",
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
                             { "processName", $"{this.processName}" },
@@ -247,6 +254,7 @@ namespace AudioMixer
                     Logger.Instance.LogMessage(TracingLevel.INFO, "No sessions available.");
                     SentrySdk.AddBreadcrumb(
                         message: "No sessions available",
+                        category: "ApplicationAction",
                         level: BreadcrumbLevel.Info
                     );
 
@@ -287,6 +295,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Releasing audio session",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                  data: new Dictionary<string, string> {
                             { "processName", $"{this.processName}" },
@@ -311,8 +320,9 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Session disconnected",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
-                 data: new Dictionary<string, string> {
+                data: new Dictionary<string, string> {
                     { "processName", $"{this.processName}" },
                     { "controlType", $"{controlType}" },
                     { "isMuted", $"{this.isMuted}" },
@@ -328,6 +338,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Volume changed",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
                     { "processName", $"{this.processName}" },
@@ -365,6 +376,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Key pressed",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
                     { "processName", $"{this.processName}" },
@@ -390,6 +402,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Key released",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
                     { "processName", $"{this.processName}" },
@@ -411,6 +424,7 @@ namespace AudioMixer
             {
                 SentrySdk.AddBreadcrumb(
                     message: "Add to blacklist",
+                    category: "ApplicationAction",
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
                         { "processName", $"{this.processName}" },
@@ -429,7 +443,7 @@ namespace AudioMixer
                 {
                     try
                     {
-                        SimpleAudioVolume volume = pluginController.SelectedAction.AudioSessions[0].session.SimpleAudioVolume;
+                        SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
                         if (volume == null)
                         {
                             pluginController.SelectedAction = null;
@@ -541,6 +555,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Refresh applications",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info
             );
 
@@ -565,6 +580,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Received global settings",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
             );
@@ -606,6 +622,7 @@ namespace AudioMixer
             catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
             }
         }
 
@@ -648,6 +665,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Received settings",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
             );
@@ -663,6 +681,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Save settings",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> { { "setting", settings.ToString() } }
             );
@@ -675,6 +694,7 @@ namespace AudioMixer
         {
             SentrySdk.AddBreadcrumb(
                 message: "Reset settings",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> { { "setting", settings.ToString() } }
             );
@@ -690,6 +710,7 @@ namespace AudioMixer
 
             SentrySdk.AddBreadcrumb(
                 message: "Received data from property inspector",
+                category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string>{
                     { "processName", $"{this.processName}" },
