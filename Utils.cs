@@ -22,9 +22,13 @@ namespace AudioMixer
 
         private static Font font = new Font("Arial", 28F, FontStyle.Regular);
         private static FontFamily fontFamily = new FontFamily("Arial");
+        private static Image volUpImage = Image.FromFile(@"Images\VolumeHigh.png");
+        private static Image volDnImage = Image.FromFile(@"Images\VolumeLow.png");
+        private static Image muteImage = Image.FromFile(@"Images\VolumeMute.png");
 
-        public static Image CreateIconImage(Bitmap icon)
+        public static Image CreateIconImage(Bitmap image)
         {
+            Bitmap icon = new Bitmap(image);
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
             using (Graphics graph = Graphics.FromImage(clone))
@@ -61,6 +65,35 @@ namespace AudioMixer
                 GraphicsPath path = new GraphicsPath();
                 float emSize = graph.DpiY * font.Size / 72;
                 path.AddString($"{Math.Round(volume, 2) * 100}%", fontFamily, (int)FontStyle.Regular, emSize, new Rectangle(0, 0, 144, 144), stringFormat);
+
+                Pen pen = new Pen(Brushes.Black, 10F);
+                graph.DrawPath(pen, path);
+                graph.FillPath(Brushes.White, path);
+
+                return clone;
+            };
+        }
+
+        public static Image CreateTextImage(string text)
+        {
+            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
+
+            using (Graphics graph = Graphics.FromImage(clone))
+            {
+                var stringFormat = new StringFormat();
+                stringFormat.Alignment = StringAlignment.Far;
+                stringFormat.LineAlignment = StringAlignment.Far;
+
+                graph.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graph.SmoothingMode = SmoothingMode.HighQuality;
+                graph.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                graph.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                graph.CompositingQuality = CompositingQuality.HighQuality;
+                graph.FillRectangle(Brushes.Transparent, new Rectangle(0, 0, 144, 144));
+
+                GraphicsPath path = new GraphicsPath();
+                float emSize = graph.DpiY * font.Size / 72;
+                path.AddString(text, fontFamily, (int)FontStyle.Regular, emSize, new Rectangle(0, 0, 144, 144), stringFormat);
 
                 Pen pen = new Pen(Brushes.Black, 10F);
                 graph.DrawPath(pen, path);
@@ -132,7 +165,6 @@ namespace AudioMixer
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            Image muteImage = Image.FromFile(@"Images\VolumeMute.png");
             using (Graphics graph = Graphics.FromImage(clone))
             {
                 graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
@@ -141,31 +173,34 @@ namespace AudioMixer
             return clone;
         }
 
-        public static Image CreateVolumeUpKey()
+        public static Image CreateVolumeUpKey(float? volumeStep)
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            Image muteImage = Image.FromFile(@"Images\VolumeHigh.png");
             using (Graphics graph = Graphics.FromImage(clone))
             {
-                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+                var rect = new Rectangle(0, 0, 144, 144);
+                graph.DrawImage(volUpImage, rect);
+                graph.DrawImage(CreateTextImage(volumeStep != null ? $"+{volumeStep}" : ""), rect);
             }
 
             return clone;
         }
 
-        public static Image CreateVolumeDownKey()
+        public static Image CreateVolumeDownKey(float? volumeStep)
         {
             Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            Image muteImage = Image.FromFile(@"Images\VolumeLow.png");
             using (Graphics graph = Graphics.FromImage(clone))
             {
-                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+                var rect = new Rectangle(0, 0, 144, 144);
+                graph.DrawImage(volDnImage, rect);
+                graph.DrawImage(CreateTextImage(volumeStep != null ? $"-{volumeStep}" : ""), rect);
             }
 
             return clone;
         }
+
         private static Image ScaleImage(Image image, int maxWidth, int maxHeight)
         {
             var ratioX = (double)maxWidth / image.Width;
@@ -188,6 +223,7 @@ namespace AudioMixer
 
             return newImage;
         }
+
         private static GraphicsPath RoundedRect(Rectangle bounds, int radius)
         {
             int diameter = radius * 2;
@@ -220,9 +256,11 @@ namespace AudioMixer
             return path;
         }
 
+        // Make a greyscale image
         public static Bitmap GrauwertBild(Bitmap input)
         {
-            Bitmap greyscale = new Bitmap(input.Width, input.Height);
+            Bitmap image = new Bitmap(input.Width, input.Height);
+
             for (int x = 0; x < input.Width; x++)
             {
                 for (int y = 0; y < input.Height; y++)
@@ -230,33 +268,43 @@ namespace AudioMixer
                     Color pixelColor = input.GetPixel(x, y);
                     //  0.3 · r + 0.59 · g + 0.11 · b
                     int grey = (int)(pixelColor.R * 0.3 + pixelColor.G * 0.59 + pixelColor.B * 0.11);
-                    greyscale.SetPixel(x, y, Color.FromArgb(pixelColor.A, grey, grey, grey));
+                    image.SetPixel(x, y, Color.FromArgb(pixelColor.A, grey, grey, grey));
                 }
             }
-            return greyscale;
+            return image;
         }
 
-        public static String BitmapToBase64(Bitmap newImage)
+        public static string BitmapToBase64(Bitmap image)
         {
-            Bitmap bImage = newImage;  // Your Bitmap Image
+            // https://stackoverflow.com/questions/12709360/whats-the-difference-between-bitmap-clone-and-new-bitmapbitmap
+            /* using (Image newImage = new Bitmap(image))
+             {
+                 System.IO.MemoryStream ms = new MemoryStream();
+                 newImage.Save(ms, ImageFormat.Png);
+
+                 byte[] byteImage = ms.ToArray();
+                 var SigBase64 = Convert.ToBase64String(byteImage);
+
+                 return SigBase64;
+             }*/
+
             System.IO.MemoryStream ms = new MemoryStream();
-            bImage.Save(ms, ImageFormat.Png);
+            image.Save(ms, ImageFormat.Png);
+
             byte[] byteImage = ms.ToArray();
             var SigBase64 = Convert.ToBase64String(byteImage);
+
             return SigBase64;
         }
 
         public static Bitmap Base64ToBitmap(string base64String)
         {
-            Bitmap bmpReturn = null;
             byte[] byteBuffer = Convert.FromBase64String(base64String);
-            MemoryStream memoryStream = new MemoryStream(byteBuffer);
-            memoryStream.Position = 0;
-            bmpReturn = (Bitmap)Bitmap.FromStream(memoryStream);
-            memoryStream.Close();
-            memoryStream = null;
-            byteBuffer = null;
-            return bmpReturn;
+
+            using (MemoryStream ms = new MemoryStream(byteBuffer))
+            {
+                return new Bitmap(ms);
+            }
         }
 
         [DllImport("kernel32.dll")]

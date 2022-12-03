@@ -4,8 +4,10 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Sentry;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Timers;
+using static AudioMixer.Utils;
 
 namespace AudioMixer.Actions
 {
@@ -42,8 +44,7 @@ namespace AudioMixer.Actions
         }
 
         private PluginController pluginController = PluginController.Instance;
-        private System.Timers.Timer timer = new System.Timers.Timer(3000);
-        private bool timerElapsed = false;
+        private System.Timers.Timer timer = new System.Timers.Timer(GlobalSettings.INLINE_CONTROLS_HOLD_DURATION);
         private PluginSettings settings;
 
         private SDConnection connection;
@@ -55,7 +56,7 @@ namespace AudioMixer.Actions
 
             SentrySdk.AddBreadcrumb(
                 message: "Initializiing VolumeDown key",
-                category: "VolumeDown",
+                category: "VolumeDownAction",
                 level: BreadcrumbLevel.Info
             );
 
@@ -70,7 +71,9 @@ namespace AudioMixer.Actions
             }
 
             Connection.GetGlobalSettingsAsync();
-            connection.SetImageAsync(Utils.CreateVolumeDownKey());
+            connection.SetImageAsync(Utils.CreateVolumeDownKey(null), null, true);
+
+            timer.Elapsed += KeyHoldEvent;
         }
 
         public override void Dispose()
@@ -79,69 +82,69 @@ namespace AudioMixer.Actions
 
         public override void KeyPressed(KeyPayload payload)
         {
+            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
             SentrySdk.AddBreadcrumb(
                 message: "Key pressed",
-                category: "VolumeDown",
+                category: "VolumeDownAction",
                 level: BreadcrumbLevel.Info
             );
 
-            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
-
-            timerElapsed = false;
-            timer.Elapsed += (object timerSender, ElapsedEventArgs elapsedEvent) =>
-            {
-                timerElapsed = true;
-            };
-            timer.AutoReset = false;
             timer.Start();
+        }
+
+        private void KeyHoldEvent(object timerSender, ElapsedEventArgs elapsedEvent)
+        {
+            VolumeDown();
         }
 
         public override void KeyReleased(KeyPayload payload)
         {
+            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
             SentrySdk.AddBreadcrumb(
                message: "Key released",
-               category: "VolumeDown",
+               category: "VolumeDownAction",
                level: BreadcrumbLevel.Info
-           );
-
-            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
+            );
 
             timer.Stop();
-            // If the timer of 3 seconds has passed.
-            if (timerElapsed)
+
+            VolumeDown();
+        }
+
+        private void VolumeDown()
+        {
+            try
             {
+                SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
+                if (volume == null)
+                {
+                    SentrySdk.AddBreadcrumb(
+                       message: "No selected action for volume to control",
+                       category: "VolumeDownAction",
+                       level: BreadcrumbLevel.Info
+                   );
+                   return;
+                }
+
+                float newVolume = 1F;
+                float volumeStep = float.Parse(settings.GlobalLock ? globalSettings.VolumeStep : settings.IndependantVolumeStep) / 100;
+                if (volume.Mute) volume.Mute = !volume.Mute;
+                else
+                {
+                    newVolume = volume.Volume - volumeStep;
+                    volume.Volume = newVolume < 0F ? 0F : newVolume;
+                }
+
+                pluginController.SelectedAction.AudioSessions.ForEach(session =>
+                {
+                    session.session.SimpleAudioVolume.Volume = volume.Volume;
+                    session.session.SimpleAudioVolume.Mute = volume.Mute;
+                });
             }
-            else
+            catch (Exception ex)
             {
-                try
-                {
-                    SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
-                    if (volume == null)
-                    {
-                        throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
-                    }
-
-                    float newVolume = 1F;
-                    float volumeStep = float.Parse(settings.GlobalLock ? globalSettings.VolumeStep : settings.IndependantVolumeStep) / 100;
-                    if (volume.Mute) volume.Mute = !volume.Mute;
-                    else
-                    {
-                        newVolume = volume.Volume - volumeStep;
-                        volume.Volume = newVolume < 0F ? 0F : newVolume;
-                    }
-
-                    pluginController.SelectedAction.AudioSessions.ForEach(session =>
-                    {
-                        session.session.SimpleAudioVolume.Volume = volume.Volume;
-                        session.session.SimpleAudioVolume.Mute = volume.Mute;
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
-                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDown"; });
-                }
-
+                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDownAction"; });
             }
         }
 
@@ -150,6 +153,13 @@ namespace AudioMixer.Actions
         {
             try
             {
+                SentrySdk.AddBreadcrumb(
+                    message: "Received global settings",
+                    category: "VolumeDownAction",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> { { "settings", payload.Settings.ToString() } }
+                );
+
                 // Global Settings exist
                 if (payload?.Settings != null && payload.Settings.Count > 0)
                 {
@@ -162,17 +172,17 @@ namespace AudioMixer.Actions
                 else // Global settings do not exist, create new one and SAVE it
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                    globalSettings = new GlobalSettings
-                    {
-                        InlineControlsEnabled = true
-                    };
+                    globalSettings = GlobalSettings.CreateDefaultSettings();
                     await SetGlobalSettings();
                 }
             }
             catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDown"; });
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDownAction"; });
+
+                globalSettings = GlobalSettings.CreateDefaultSettings();
+                await SetGlobalSettings();
             }
         }
 
@@ -192,21 +202,38 @@ namespace AudioMixer.Actions
             }
 
             float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
-            await connection.SetTitleAsync($"-{volumeStep}");
+            await connection.SetImageAsync(Utils.CreateVolumeDownKey(volumeStep), null, true);
 
             await SaveSettings();
         }
 
         public override async void ReceivedSettings(ReceivedSettingsPayload payload)
         {
-            Tools.AutoPopulateSettings(settings, payload.Settings);
-            await InitializeSettings();
+            try
+            {
+                SentrySdk.AddBreadcrumb(
+                    message: "Received settings",
+                    category: "VolumeDownAction",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
+                );
 
-            await SetGlobalSettings();
-            await SaveSettings();
+                Tools.AutoPopulateSettings(settings, payload.Settings);
+                await InitializeSettings();
 
-            float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
-            await connection.SetTitleAsync($"-{volumeStep}");
+                await SetGlobalSettings();
+                await SaveSettings();
+
+                float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
+                await connection.SetImageAsync(Utils.CreateVolumeDownKey(volumeStep), null, true);
+            } catch (Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedSettings Exception: {ex}");
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeDownAction"; });
+
+                settings = PluginSettings.CreateDefaultSettings();
+                await SaveSettings();
+            }
         }
 
         private Task SaveSettings()

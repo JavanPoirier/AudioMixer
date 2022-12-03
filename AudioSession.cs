@@ -7,6 +7,7 @@ using BarRaider.SdTools;
 using Newtonsoft.Json;
 using Sentry;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
 namespace AudioMixer
 {
@@ -17,8 +18,11 @@ namespace AudioMixer
 
         public AudioSessionSetting(AudioSession audioSession)
         {
-            processName = audioSession.processName;
-            processIcon = Utils.BitmapToBase64(audioSession.processIcon);
+            lock(audioSession)
+            {
+                processName = audioSession.processName;
+                processIcon = Utils.BitmapToBase64(audioSession.processIcon);
+            }
         }
 
         [JsonConstructor]
@@ -65,7 +69,11 @@ namespace AudioMixer
                     message: "Creating audio session",
                     category: "AudioSession",
                     level: BreadcrumbLevel.Info,
-                    data: new Dictionary<string, string> { { "session", session.ToString() } }
+                    data: new Dictionary<string, string> {
+                        { "sessionDisplayName", session.DisplayName },
+                        { "sessionIconPath", session.IconPath },
+                        { "processName", processName },
+                    }
                 );
 
                 Process process = Process.GetProcessById((int)session.GetProcessID);
@@ -78,7 +86,7 @@ namespace AudioMixer
                 // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName for SO resolution.
                 // processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
 
-                try 
+                try
                 {
                     var processFilePath = Utils.GetProcessName(process.Id);
 
@@ -87,7 +95,8 @@ namespace AudioMixer
                         category: "AudioSession",
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
-                            { "session", session.ToString() },
+                            { "sessionDisplayName", session.DisplayName },
+                            { "sessionIconPath", session.IconPath },
                             { "processName", processName },
                             { "processFilePath", processFilePath }
                         }
@@ -113,22 +122,42 @@ namespace AudioMixer
                         category: "AudioSession",
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
-                            { "session", session.ToString() },
+                            { "sessionDisplayName", session.DisplayName },
+                            { "sessionIconPath", session.IconPath },
                             { "processName", processName }
                         }
                     );
+
+                    // TODO: Only in debug?
+                    var sentryEvent = new SentryEvent();
+                    sentryEvent.Message = "Unable to find process icon";
+                    sentryEvent.SetExtras(new Dictionary<string, object> {
+                            { "sessionDisplayName", session.DisplayName },
+                            { "sessionIconPath", session.IconPath },
+                            { "sessionIsSystemSoundsSession", session.IsSystemSoundsSession },
+                            { "processName", processName }
+                        });
+                    SentrySdk.CaptureEvent(sentryEvent);
 
                     processIcon = new Bitmap(Utils.CreateDefaultAppKey());
                 }
 
                 session.RegisterEventClient(this);
 
+                Logger.Instance.LogMessage(TracingLevel.INFO, JObject.FromObject(new Dictionary<string, string> {
+                        { "sessionDisplayName", session.DisplayName },
+                        { "sessionIconPath", session.IconPath },
+                        { "sessionIsSystemSoundsSession", session.IsSystemSoundsSession.ToString() },
+                        { "processName", processName }
+                    }).ToString());
+
                 SentrySdk.AddBreadcrumb(
                        message: "Created session",
                        category: "AudioSession",
                        level: BreadcrumbLevel.Info,
                        data: new Dictionary<string, string> {
-                            { "session", session.ToString() },
+                            { "sessionDisplayName", session.DisplayName },
+                            { "sessionIconPath", session.IconPath },
                             { "processName", processName }
                        }
                    );

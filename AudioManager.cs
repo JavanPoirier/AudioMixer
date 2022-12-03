@@ -1,13 +1,16 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
+using Sentry;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace AudioMixer
 {
-    public class AudioManager 
+    public class AudioManager : IMMNotificationClient
     {
         private PluginController pluginController;
+        private MMDeviceEnumerator deviceEnum = new MMDeviceEnumerator();
         private MMDevice device;
 
         public List<AudioSession> audioSessions = new List<AudioSession>();
@@ -15,33 +18,52 @@ namespace AudioMixer
         public AudioManager(PluginController pluginController)
         {
             this.pluginController = pluginController;
+            
+            SetAudioSessions();
 
-            var deviceEnumerator = new MMDeviceEnumerator();
-            device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            deviceEnum.RegisterEndpointNotificationCallback(this);
+        }
 
-            var sessions = device.AudioSessionManager.Sessions;
-            if (sessions == null)
+        public void SetAudioSessions() {
+            try
             {
-
-            }
-            else
-            {
-                for (int i = 0; i < sessions.Count; i++)
+                if (device != null)
                 {
-                    var session = sessions[i];
-                    if (!session.IsSystemSoundsSession && ProcessExists(session.GetProcessID))
+                    device.AudioSessionManager.OnSessionCreated -= AddAudioSession;
+                }
+
+                audioSessions.Clear();
+
+                device = deviceEnum.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                var sessions = device.AudioSessionManager.Sessions;
+                if (sessions == null)
+                {
+
+                }
+                else
+                {
+                    for (int i = 0; i < sessions.Count; i++)
                     {
-                        AddAudioSession(session);
+                        var session = sessions[i];
+                        if (!session.IsSystemSoundsSession && ProcessExists(session.GetProcessID))
+                        {
+                            AddAudioSession(session);
+                        }
                     }
                 }
-            }
 
-            device.AudioSessionManager.OnSessionCreated += AddAudioSession;
+                device.AudioSessionManager.OnSessionCreated += AddAudioSession;
+            } catch (Exception ex)
+            {
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "AudioManager"; });
+            }
         }
 
         private void Dispose()
         {
+            deviceEnum.UnregisterEndpointNotificationCallback(this);
             device.AudioSessionManager.OnSessionCreated -= AddAudioSession;
+            audioSessions.Clear();
         }
 
         bool ProcessExists(uint processId)
@@ -66,9 +88,41 @@ namespace AudioMixer
 
         void AddAudioSession(object sender, IAudioSessionControl audioSessionControl)
         {
-            // TODO: Still add them to session list, just add a blacklist property.
             var session = new AudioSessionControl(audioSessionControl);
             AddAudioSession(session);
         }
+
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
+
+        public void OnDeviceAdded(string pwstrDeviceId)
+        {
+            SentrySdk.AddBreadcrumb(
+                message: "Device added",
+                category: "AudioManager",
+                level: BreadcrumbLevel.Info
+            );
+        }
+
+        public void OnDeviceRemoved(string deviceId)
+        {
+            SentrySdk.AddBreadcrumb(
+                message: "Device removed",
+                category: "AudioManager",
+                level: BreadcrumbLevel.Info
+            );
+        }
+
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+        {
+            SentrySdk.AddBreadcrumb(
+                message: "Default device changed",
+                category: "AudioManager",
+                level: BreadcrumbLevel.Info
+            );
+
+            SetAudioSessions();
+        }
+
+        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
     }
 }

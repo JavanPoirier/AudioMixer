@@ -1,9 +1,11 @@
 ﻿using BarRaider.SdTools;
 using Newtonsoft.Json.Linq;
+using Sentry;
 using streamdeck_client_csharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace AudioMixer
@@ -100,34 +102,40 @@ namespace AudioMixer
                 actionQueue = new ConcurrentQueue<ApplicationAction>(applicationActions);
 
                 // No need to reset icon as when the action is set in queue it will be reset if need be.
-                applicationActions.ForEach(action => action.ReleaseAudioSession(false));
+                applicationActions.ToList().ForEach(action => action.ReleaseAudioSession(false));
 
                 ApplicationAction enqueuedAction;
                 while (actionQueue.TryDequeue(out enqueuedAction)) enqueuedAction.SetAudioSession();
             }
         }
 
-        private void SetActionControls()
+        private async void SetActionControls()
         {
             if (selectedAction != null && globalSettings.InlineControlsEnabled)
             {
-                List<ApplicationAction> controls = applicationActions.FindAll(action => action != this.selectedAction);
+                List<ApplicationAction> controls = applicationActions.ToList().FindAll(action => action != this.selectedAction);
 
                 if (controls.Count >= 3)
                 {
-                    controls[0].SetControlType(Utils.ControlType.Mute);
-                    controls[1].SetControlType(Utils.ControlType.VolumeDown);
-                    controls[2].SetControlType(Utils.ControlType.VolumeUp);
+                    await controls[0].SetControlType(Utils.ControlType.Mute);
+                    await controls[1].SetControlType(Utils.ControlType.VolumeDown);
+                    await controls[2].SetControlType(Utils.ControlType.VolumeUp);
                 }
                 else
                 {
-                    Logger.Instance.LogMessage(TracingLevel.WARN, "Not enough plugin actions available to place controls.");
+                    string warn = "Not enough plugin actions available to place controls.";
+                    Logger.Instance.LogMessage(TracingLevel.WARN, warn);
+                    SentrySdk.AddBreadcrumb(
+                       message: "warn",
+                       category: "PluginController",
+                       level: BreadcrumbLevel.Warning
+                     );
                 }
             }
             else
             {
                 // Reset all application actions.
-                applicationActions.ForEach(pluginAction => pluginAction.SetControlType(Utils.ControlType.Application));
+                applicationActions.ToList().ForEach(async pluginAction => await pluginAction.SetControlType(Utils.ControlType.Application));
                 //UpdateActions();
             }
         }

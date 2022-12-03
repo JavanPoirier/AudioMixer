@@ -34,7 +34,7 @@ auto-magically added to your blacklist.
 At the moment for V1, processes do not move on to consequative pages once a page is full. This behaviour is something I would like to add, however it would
 be a user setting as this can also be seen as unintended behaviour.
 
-###  You can only have one of the same applications as static
+### You can only have one of the same applications as static
 You can have multiple static applications, just not the same application. This is a limitation of how the code was written. 
 This shouldn't be an issue for most, let me know if it is.
 
@@ -70,8 +70,7 @@ Either the audio session actually does not have an associated icon, or more like
 ## TODO
 - Changing default output device.
 - Add Application Whitelist (Application priority)
-- Local volume step setting for static actions
-- Alight applications left to right. (**Note to Self**: Currently not occuring as the application actions array index is not reflective of the key position)
+- Alighn applications left to right. (**Note to Self**: Currently not occuring as the application actions array index is not reflective of the key position)
 
 ---
 
@@ -108,5 +107,10 @@ There are a few  ways to log...
 	1. StreamDeck Logger - Connection.LogSDMessage() will log to a file to `AppData\Roaming\Elgato\StreamDeck\logs\com.javanpoirier.audiomixer0` with 0 being 0-9.
 	1. BarRaider Logger - Logger.Instance.LogMessage() will log to a file within the plugin install directory `AppData\Roaming\Elgato\StreamDeck\Plugins\com.javanpoirier.audiomixer.sdPlugin\pluginLog.log`
 	1. Sentry - Refer to Sentry documentation.
+
+### Sumission
+1. Change AssemblyVersion in ./AssemblyInfo.cs
+1. Change manafest.json verison
+1. Change Sentry verison
 
 <a href="https://www.flaticon.com/free-icons/headset" title="headset icons">Headset icons created by HideMaru - Flaticon</a>

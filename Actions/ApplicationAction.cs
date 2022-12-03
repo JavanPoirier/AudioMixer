@@ -20,6 +20,7 @@ namespace AudioMixer
         public class PluginSettings
         {
             public const string VOLUME_STEP = "10";
+            public const double INLINE_CONTROLS_HOLD_DURATION = 200;
             public const int INLINE_CONTROLS_TIMEOUT = 0;
 
             public static PluginSettings CreateDefaultSettings()
@@ -37,6 +38,7 @@ namespace AudioMixer
                     WhitelistApplications = new List<AudioSessionSetting>(),
                     WhitelistedApplications = new List<AudioSessionSetting>(),
                     InlineControlsEnabled = true,
+                    InlineControlsHoldDuration = INLINE_CONTROLS_HOLD_DURATION,
                     InlineControlsTimeout = INLINE_CONTROLS_TIMEOUT,
                 };
                 return instance;
@@ -78,26 +80,29 @@ namespace AudioMixer
             [JsonProperty(PropertyName = "inlineControlsEnabled")]
             public bool InlineControlsEnabled { get; set; }
 
+            [JsonProperty(PropertyName = "inlineControlsHoldDuation")]
+            public double InlineControlsHoldDuration { get; set; }
+
             [JsonProperty(PropertyName = "inlineControlsTimeout")]
             public int InlineControlsTimeout { get; set; }
         }
 
         private PluginController pluginController = PluginController.Instance;
         private Utils.ControlType controlType = Utils.ControlType.Application;
-        private System.Timers.Timer timer = new System.Timers.Timer(1500);
-        private bool timerElapsed = false;
+        private Stopwatch stopWatch = new Stopwatch();
+        private System.Timers.Timer timer = new System.Timers.Timer(200);
         private GlobalSettings globalSettings;
 
         private Image iconImage;
         private Image volumeImage;
         private float volume;
-        private bool isMuted;
+        private bool muted;
 
         public readonly string coords;
         public string processName;
         public PluginSettings settings;
 
-        public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.FindAll(session => session.processName == processName); }
+        public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.ToList().FindAll(session => session.processName == processName); }
 
         public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
@@ -132,6 +137,7 @@ namespace AudioMixer
             }
             else
             {
+                // TODO: Create & assign a default and merge to allow for compatability of new features.
                 settings = payload.Settings.ToObject<PluginSettings>();
             }
 
@@ -139,6 +145,8 @@ namespace AudioMixer
             InitializeSettings();
 
             Connection.OnSendToPlugin += OnSendToPlugin;
+
+            timer.Elapsed += KeyHoldEvent;
         }
 
         public override void Dispose()
@@ -149,7 +157,7 @@ namespace AudioMixer
             ReleaseAudioSession();
             pluginController.RemoveAction(this);
 
-            timer.Dispose();
+            if (timer != null) timer.Dispose();
         }
 
         // NOTE:
@@ -195,7 +203,7 @@ namespace AudioMixer
                     category: "ApplicationAction",
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
-                        { "processName", $"{this.processName}" },
+                        { "processName", $"{processName}" },
                         { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                     }
                  );
@@ -225,26 +233,32 @@ namespace AudioMixer
                     category: "ApplicationAction",
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
-                        { "processName", $"{this.processName}" },
-                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                        { "processName", $"{processName}" },
+                        { "applicationActions", $"{pluginController.applicationActions.Count()}" },
+                        { "audioSessionCount", $"{AudioSessions.Count}" }
                     }
                  );
             }
 
+            // Do NOT add 0 check condition ot this outer if as it is required for the nested if of StaticApplication.
             if (AudioSessions.Count < 1)
             {
                 // If application action is static and audio session is not available, use greyscaled last known icon.
                 if (settings.StaticApplication != null)
                 {
                     var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
-                    Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+
+                    if (controlType == Utils.ControlType.Application)
+                    {
+                        Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false), null, true);
+                    }
 
                     SentrySdk.AddBreadcrumb(
                         message: "Set unavailable static session",
                         category: "ApplicationAction",
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
-                            { "processName", $"{this.processName}" },
+                            { "processName", $"{processName}" },
                             { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                         }
                     );
@@ -258,7 +272,10 @@ namespace AudioMixer
                         level: BreadcrumbLevel.Info
                     );
 
-                    Connection.SetImageAsync((string)null, 0, true);
+                    if (controlType == Utils.ControlType.Application)
+                    {
+                        Connection.SetImageAsync((string)null, null, true);
+                    }
                 }
             }
             else
@@ -268,17 +285,43 @@ namespace AudioMixer
                     // NOTE: All audio sessions in one process are treated as one. If one changes volume so does the other.
                     // The reasoning for this comes down to possible unwanted multiple process icons being shown, and with no way
                     // of discriminating them I felt this was the best UX. Ex: Discord opens 2 audio sessions, 1 for comms, and the other for notifications.
-                    // Anywho, this at least makes it easier for the user, I hope.
+                    var audioSessions = AudioSessions.ToList();
+                    audioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
+                    audioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
 
-                    AudioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
-                    AudioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
+                    bool selected = pluginController.SelectedAction == this;
+                    bool syncedMuted = audioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
+                    var syncedVolume = audioSessions.First().session.SimpleAudioVolume.Volume;
+                    this.volume = syncedVolume;
+                    this.muted = syncedMuted;
 
-                    Boolean selected = pluginController.SelectedAction == this;
-                    Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
+                    // Update sessions to ensure a consistent volume setting. This inturn will call to set the image.
+                    AudioSessions.ForEach(session =>
+                    {
+                        // Only change them if not already the to be value to prevent recursion. 
+                        if (session.session.SimpleAudioVolume.Volume != syncedVolume) session.session.SimpleAudioVolume.Volume = syncedVolume;
+                        if (session.session.SimpleAudioVolume.Mute != syncedMuted) session.session.SimpleAudioVolume.Mute = syncedMuted;
+                    });
 
-                    iconImage = Utils.CreateIconImage(AudioSessions.First().processIcon);
-                    volumeImage = Utils.CreateVolumeImage(AudioSessions.First().session.SimpleAudioVolume.Volume);
-                    Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                    if (controlType == Utils.ControlType.Application)
+                    {
+                        // Assing all sessions the highest volume value found by triggering a valume change.
+                        iconImage = Utils.CreateIconImage(audioSessions.First().processIcon);
+                        volumeImage = Utils.CreateVolumeImage(this.volume);
+                        Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                    }
+
+                    Logger.Instance.LogMessage(TracingLevel.INFO, $"Combined audio sessions for process {processName}");
+                    SentrySdk.AddBreadcrumb(
+                        message: "Combined audio sessions",
+                        category: "ApplicationAction",
+                        level: BreadcrumbLevel.Info,
+                        data: new Dictionary<string, string> {
+                            { "processName", $"{processName}" },
+                            { "audioSessionCount", $"{AudioSessions.Count}" }
+                        }
+                    );
+
                 }
                 // AudioSession may be released by the time the images are created/set. Retry re-setting session.
                 catch (Exception ex)
@@ -293,25 +336,35 @@ namespace AudioMixer
 
         public void ReleaseAudioSession(bool resetIcon = true)
         {
-            SentrySdk.AddBreadcrumb(
-                message: "Releasing audio session",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                 data: new Dictionary<string, string> {
-                            { "processName", $"{this.processName}" },
-                            { "applicationActions", $"{pluginController.applicationActions.Count()}" }
-                        }
-            );
-
-            // We only want to reset the icon if we don't know what it's next one will be.
-            if (resetIcon && settings.StaticApplication == null) Connection.SetImageAsync((string)null, 0, true);
-
-            // Iterate through all audio sessions as by this time it could already been removed.
-            pluginController.audioManager.audioSessions.ForEach(session =>
+            try
             {
-                session.SessionDisconnnected -= SessionDisconnected;
-                session.VolumeChanged -= VolumeChanged;
-            });
+                SentrySdk.AddBreadcrumb(
+                    message: "Releasing audio session",
+                    category: "ApplicationAction",
+                    level: BreadcrumbLevel.Info,
+                     data: new Dictionary<string, string> {
+                        { "processName", $"{processName}" },
+                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                     }
+                );
+
+                if (controlType == Utils.ControlType.Application)
+                {
+                    // We only want to reset the icon if we don't know what it's next one will be.
+                    if (resetIcon && settings.StaticApplication == null) Connection.SetImageAsync((string)null, null, true);
+                }
+
+                // Iterate through all audio sessions as by this time it could already been removed.
+                AudioSessions.ToList().ForEach(session =>
+                {
+                    session.SessionDisconnnected -= SessionDisconnected;
+                    session.VolumeChanged -= VolumeChanged;
+                });
+            } catch (Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.WARN, ex.Message);
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+            }
 
             this.processName = null;
         }
@@ -323,10 +376,10 @@ namespace AudioMixer
                 category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
-                    { "processName", $"{this.processName}" },
+                    { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{this.isMuted}" },
-                    { "currentVolume", $"{this.volume}" },
+                    { "isMuted", $"{muted}" },
+                    { "currentVolume", $"{volume}" },
                     { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                 }
             );
@@ -341,34 +394,38 @@ namespace AudioMixer
                 category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
-                    { "processName", $"{this.processName}" },
+                    { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{this.isMuted}" },
-                    { "currentVolume", $"{this.volume}" },
+                    { "isMuted", $"{muted}" },
+                    { "currentVolume", $"{volume}" },
                     { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                 }
             );
 
             AudioSession senderSession = sender as AudioSession;
+            volume = senderSession.session.SimpleAudioVolume.Volume;
+            muted = senderSession.session.SimpleAudioVolume.Mute;
 
-            Boolean selected = pluginController.SelectedAction == this;
-
-            // NOTE: Do not use event arguments as they are not the correct values where volume and mute are set independantly
-            // causing two events to get fired.
-            if (volume != senderSession.session.SimpleAudioVolume.Volume || isMuted != senderSession.session.SimpleAudioVolume.Mute)
+            // Update sessions to ensure a consistent volume setting.
+            AudioSessions.ToList().ForEach(session =>
             {
-                volume = senderSession.session.SimpleAudioVolume.Volume;
-                isMuted = senderSession.session.SimpleAudioVolume.Mute;
-
-                // Update any other sessions associated with the process.
-                AudioSessions.FindAll(session => session != senderSession).ForEach(session =>
+                // Only change them if not already the to be value to prevent recursion. 
+                if (session.session.SimpleAudioVolume.Volume != senderSession.session.SimpleAudioVolume.Volume)
                 {
-                    session.session.SimpleAudioVolume.Volume = volume;
-                    session.session.SimpleAudioVolume.Mute = isMuted;
-                });
+                    session.session.SimpleAudioVolume.Volume = senderSession.session.SimpleAudioVolume.Volume;
+                }
+                if (session.session.SimpleAudioVolume.Mute != senderSession.session.SimpleAudioVolume.Mute)
+                {
+                    session.session.SimpleAudioVolume.Mute = muted;
+                }
+            });
 
+            // Only update the key if its being displayed as an application.
+            if (controlType == Utils.ControlType.Application)
+            {
                 volumeImage = Utils.CreateVolumeImage(volume);
-                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, isMuted));
+                Boolean selected = pluginController.SelectedAction == this;
+                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
             }
         }
 
@@ -379,116 +436,111 @@ namespace AudioMixer
                 category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
-                    { "processName", $"{this.processName}" },
+                    { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{this.isMuted}" },
-                    { "currentVolume", $"{this.volume}" },
+                    { "isMuted", $"{muted}" },
+                    { "currentVolume", $"{volume}" },
                     { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                 }
             );
 
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
 
-            timerElapsed = false;
-            timer.Elapsed += (object timerSender, ElapsedEventArgs elapsedEvent) =>
-            {
-                timerElapsed = true;
-            };
-            timer.AutoReset = false;
+            stopWatch.Restart();
             timer.Start();
+        }
+
+        private void KeyHoldEvent(object timerSender, ElapsedEventArgs elapsedEvent)
+        {
+            if (controlType == Utils.ControlType.VolumeUp || controlType == Utils.ControlType.VolumeDown)
+            {
+                SetVolume();
+            }
         }
 
         public override void KeyReleased(KeyPayload payload)
         {
+            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
             SentrySdk.AddBreadcrumb(
                 message: "Key released",
                 category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
-                    { "processName", $"{this.processName}" },
+                    { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{this.isMuted}" },
-                    { "currentVolume", $"{this.volume}" },
+                    { "isMuted", $"{muted}" },
+                    { "currentVolume", $"{volume}" },
                     { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                 }
             );
 
-            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
-
             timer.Stop();
+            stopWatch.Stop();
 
-            if (controlType == Utils.ControlType.Application && processName == null) return;
-
-            // If the timer of 3 seconds has passed.
-            if (timerElapsed)
+            if (controlType == Utils.ControlType.Application)
             {
-                SentrySdk.AddBreadcrumb(
-                    message: "Add to blacklist",
-                    category: "ApplicationAction",
-                    level: BreadcrumbLevel.Info,
-                    data: new Dictionary<string, string> {
-                        { "processName", $"{this.processName}" },
-                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
-                    }
-                );
-                ToggleBlacklistApp(processName);
+                if (processName == null) return;
+
+                if (stopWatch.ElapsedMilliseconds >= 2000)
+                {
+                    ToggleBlacklistApp(processName);
+
+                } else if (AudioSessions.Count > 0) pluginController.SelectedAction = this;
+            } else
+            {
+                SetVolume();
             }
-            else
+        }
+
+        private void SetVolume()
+        {
+            try
             {
-                if (controlType == Utils.ControlType.Application)
+                SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
+                if (volume == null)
                 {
-                    if (AudioSessions.Count > 0) pluginController.SelectedAction = this;
+                    pluginController.SelectedAction = null;
+
+                    // TODO: Can be removed?
+                    throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
                 }
-                else
+
+                float newVolume = 1F;
+                float volumeStep = (float)Int32.Parse(settings.VolumeStep) / 100;
+                switch (controlType)
                 {
-                    try
-                    {
-                        SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
-                        if (volume == null)
+                    case Utils.ControlType.Mute:
+                        volume.Mute = !volume.Mute;
+                        break;
+                    case Utils.ControlType.VolumeDown:
+                        if (volume.Mute) volume.Mute = !volume.Mute;
+                        else
                         {
-                            pluginController.SelectedAction = null;
-
-                            // TODO: Can be removed?
-                            throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
+                            newVolume = volume.Volume - (volumeStep);
+                            volume.Volume = newVolume < 0F ? 0F : newVolume;
                         }
-
-                        float newVolume = 1F;
-                        float volumeStep = (float)Int32.Parse(settings.VolumeStep) / 100;
-                        switch (controlType)
+                        break;
+                    case Utils.ControlType.VolumeUp:
+                        if (volume.Mute) volume.Mute = !volume.Mute;
+                        else
                         {
-                            case Utils.ControlType.Mute:
-                                volume.Mute = !volume.Mute;
-                                break;
-                            case Utils.ControlType.VolumeDown:
-                                if (volume.Mute) volume.Mute = !volume.Mute;
-                                else
-                                {
-                                    newVolume = volume.Volume - (volumeStep);
-                                    volume.Volume = newVolume < 0F ? 0F : newVolume;
-                                }
-                                break;
-                            case Utils.ControlType.VolumeUp:
-                                if (volume.Mute) volume.Mute = !volume.Mute;
-                                else
-                                {
-                                    newVolume = volume.Volume + volumeStep;
-                                    volume.Volume = newVolume > 1F ? 1F : newVolume;
-                                }
-                                break;
+                            newVolume = volume.Volume + volumeStep;
+                            volume.Volume = newVolume > 1F ? 1F : newVolume;
                         }
-
-                        pluginController.SelectedAction.AudioSessions.ForEach(session =>
-                        {
-                            session.session.SimpleAudioVolume.Volume = volume.Volume;
-                            session.session.SimpleAudioVolume.Mute = volume.Mute;
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
-                        SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
-                    }
+                        break;
                 }
+
+                // Assign to all sessions
+                pluginController.SelectedAction.AudioSessions.ToList().ForEach(session =>
+                {
+                    session.session.SimpleAudioVolume.Volume = volume.Volume;
+                    session.session.SimpleAudioVolume.Mute = volume.Mute;
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
             }
         }
 
@@ -497,31 +549,31 @@ namespace AudioMixer
             if (AudioSessions.Count > 0)
             {
                 Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
-                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted));
+                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
             }
             else
             {
                 if (settings?.StaticApplication != null)
                 {
                     var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
-                    Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false));
+                    Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false), null, true);
                 }
             }
         }
 
-        public void SetControlType(Utils.ControlType controlType)
+        public async Task SetControlType(Utils.ControlType controlType)
         {
             this.controlType = controlType;
             switch (controlType)
             {
                 case Utils.ControlType.Mute:
-                    Connection.SetImageAsync(Utils.CreateMuteKey());
+                    await Connection.SetImageAsync(Utils.CreateMuteKey(), null, true);
                     break;
                 case Utils.ControlType.VolumeDown:
-                    Connection.SetImageAsync(Utils.CreateVolumeDownKey());
+                    await Connection.SetImageAsync(Utils.CreateVolumeDownKey((float)Int32.Parse(settings.VolumeStep)), null, true);
                     break;
                 case Utils.ControlType.VolumeUp:
-                    Connection.SetImageAsync(Utils.CreateVolumeUpKey());
+                    await Connection.SetImageAsync(Utils.CreateVolumeUpKey((float)Int32.Parse(settings.VolumeStep)), null, true);
                     break;
                 default:
                     pluginController.AddActionToQueue(this);
@@ -531,24 +583,39 @@ namespace AudioMixer
 
         private async void ToggleBlacklistApp(string processName)
         {
-            AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
-            if (audioSession != null)
-            {
-                var existingBlacklistedApp = settings.BlacklistedApplications.Find(session => session.processName == processName);
-                if (existingBlacklistedApp != null)
-                {
-                    settings.BlacklistedApplications.Remove(existingBlacklistedApp);
-                    settings.BlacklistApplicationName = null;
+            Logger.Instance.LogMessage(TracingLevel.INFO, $"{processName} added to blacklist");
+            SentrySdk.AddBreadcrumb(
+                message: "Add to blacklist",
+                category: "ApplicationAction",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> {
+                    { "processName", $"{processName}" },
+                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
                 }
-                else
+            );
+
+            var staticApp = settings.StaticApplications.Find(session => session.processName == processName);
+            if (staticApp != null) return;
+
+            var existingBlacklistedApp = settings.BlacklistedApplications.Find(session => session.processName == processName);
+            if (existingBlacklistedApp != null)
+            {
+                settings.BlacklistedApplications.Remove(existingBlacklistedApp);
+                settings.BlacklistApplicationName = null;
+            }
+            else
+            {
+                AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
+
+                if (audioSession != null)
                 {
                     settings.BlacklistedApplications.Add(new AudioSessionSetting(audioSession));
                     settings.BlacklistApplicationName = null;
                 }
-
-                await SetGlobalSettings();
-                await SaveSettings();
             }
+
+            await SetGlobalSettings();
+            await SaveSettings();
         }
 
         public void RefreshApplications()
@@ -578,15 +645,15 @@ namespace AudioMixer
         // Global settings are received on action initialization. Local settings are only received when changed in the PI.
         public async override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload)
         {
-            SentrySdk.AddBreadcrumb(
-                message: "Received global settings",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
-            );
-
             try
             {
+                SentrySdk.AddBreadcrumb(
+                    message: "Received global settings",
+                    category: "ApplicationAction",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> { { "settings", payload.Settings.ToString() } }
+                );
+
                 // Global Settings exist
                 if (payload?.Settings != null && payload.Settings.Count > 0)
                 {
@@ -595,7 +662,8 @@ namespace AudioMixer
                     settings.BlacklistApplications = globalSettings.BlacklistApplications;
                     settings.BlacklistedApplications = globalSettings.BlacklistedApplications;
                     settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
-                    settings.InlineControlsTimeout = globalSettings.InlineControlsTimeout;
+                    settings.InlineControlsHoldDuration = globalSettings?.InlineControlsHoldDuration ?? GlobalSettings.INLINE_CONTROLS_HOLD_DURATION;
+                    settings.InlineControlsTimeout = globalSettings?.InlineControlsTimeout ?? GlobalSettings.INLINE_CONTROLS_TIMEOUT;
                     await InitializeSettings();
                     await SaveSettings();
 
@@ -612,10 +680,7 @@ namespace AudioMixer
                 else // Global settings do not exist, create new one and SAVE it
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                    globalSettings = new GlobalSettings
-                    {
-                        InlineControlsEnabled = true
-                    };
+                    globalSettings = GlobalSettings.CreateDefaultSettings();
                     await SetGlobalSettings();
                 }
             }
@@ -623,6 +688,9 @@ namespace AudioMixer
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
                 SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+
+                globalSettings = GlobalSettings.CreateDefaultSettings();
+                await SetGlobalSettings();
             }
         }
 
@@ -637,6 +705,7 @@ namespace AudioMixer
             globalSettings.BlacklistedApplications = settings.BlacklistedApplications;
             globalSettings.WhitelistedApplications = settings.WhitelistedApplications;
             globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
+            globalSettings.InlineControlsHoldDuration = settings.InlineControlsHoldDuration;
 
             return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
         }
@@ -663,18 +732,28 @@ namespace AudioMixer
 
         public override async void ReceivedSettings(ReceivedSettingsPayload payload)
         {
-            SentrySdk.AddBreadcrumb(
-                message: "Received settings",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
-            );
+            try
+            {
+                SentrySdk.AddBreadcrumb(
+                    message: "Received settings",
+                    category: "ApplicationAction",
+                    level: BreadcrumbLevel.Info,
+                    data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
+                );
 
-            Tools.AutoPopulateSettings(settings, payload.Settings);
-            await InitializeSettings();
+                Tools.AutoPopulateSettings(settings, payload.Settings);
+                await InitializeSettings();
 
-            await SetGlobalSettings();
-            await SaveSettings();
+                await SetGlobalSettings();
+                await SaveSettings();
+            } catch(Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedSettings Exception: {ex}");
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+
+                settings = PluginSettings.CreateDefaultSettings();
+                await SaveSettings();
+            }
         }
 
         private Task SaveSettings()
@@ -708,17 +787,26 @@ namespace AudioMixer
         {
             var payload = e.Event.Payload;
 
+            Logger.Instance.LogMessage(TracingLevel.INFO, JObject.FromObject(new Dictionary<string, string> {
+                        { "processName", processName },
+                        { "controlType", $"{controlType}" },
+                        { "isMuted", $"{muted}" },
+                        { "currentVolume", $"{volume}" },
+                        { "applicationActions", $"{pluginController.applicationActions.Count()}" },
+                        { "payload", payload.ToString() }
+                    }).ToString());
+
             SentrySdk.AddBreadcrumb(
                 message: "Received data from property inspector",
                 category: "ApplicationAction",
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string>{
-                    { "processName", $"{this.processName}" },
+                    { "processName", processName },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{this.isMuted}" },
-                    { "currentVolume", $"{this.volume}" },
+                    { "isMuted", $"{muted}" },
+                    { "currentVolume", $"{volume}" },
                     { "applicationActions", $"{pluginController.applicationActions.Count()}" },
-                    { "payload", payload["value"].ToString() }
+                    { "payload", payload.ToString() }
                  }
             );
 
