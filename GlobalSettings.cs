@@ -10,7 +10,9 @@ namespace AudioMixer
     public class GlobalSettings
     {
         public const string VOLUME_STEP = "10";
+        public const double INLINE_CONTROLS_HOLD_DURATION = 200;
         public const int INLINE_CONTROLS_TIMEOUT = 0;
+
         public static GlobalSettings CreateDefaultSettings()
         {
             GlobalSettings instance = new GlobalSettings
@@ -22,6 +24,7 @@ namespace AudioMixer
                 WhitelistApplications = new List<AudioSessionSetting>(),
                 WhitelistedApplications = new List<AudioSessionSetting>(),
                 InlineControlsEnabled = true,
+                InlineControlsHoldDuration = INLINE_CONTROLS_HOLD_DURATION,
                 InlineControlsTimeout = INLINE_CONTROLS_TIMEOUT,
             };
             return instance;
@@ -47,6 +50,9 @@ namespace AudioMixer
 
         [JsonProperty(PropertyName = "inlineControlsEnabled")]
         public bool InlineControlsEnabled { get; set; }
+
+        [JsonProperty(PropertyName = "inlineControlsHoldDuation")]
+        public double InlineControlsHoldDuration { get; set; }
 
         [JsonProperty(PropertyName = "inlineControlsTimeout")]
         public int InlineControlsTimeout { get; set; }

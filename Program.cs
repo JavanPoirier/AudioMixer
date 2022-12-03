@@ -17,18 +17,25 @@ namespace AudioMixer
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
 
             GlobalDiagnosticsContext.Set("Application", "Audio Mixer");
-            GlobalDiagnosticsContext.Set("Version", "1.2.0");
+            GlobalDiagnosticsContext.Set("Version", "1.3.0");
 
             // Uncomment this line of code to allow for debugging
             // while (!System.Diagnostics.Debugger.IsAttached) { System.Threading.Thread.Sleep(100); }
+
+#if DEBUG
+            var isDebug = true;
+#else   
+            var isDebug = false;
+#endif
 
             using (SentrySdk.Init(o =>
             {
                 o.Dsn = "https://4a22d40cccbc4268abe582e0e30e6ae3@o1232787.ingest.sentry.io/6381003";
                 o.AutoSessionTracking = true;
-                o.Release = "audio-mixer@1.2.0";
-                o.Environment = "development";
+                o.Release = "audio-mixer@1.3.0";
+                o.Environment = isDebug ? "development" : "production";
                 o.MaxBreadcrumbs = 50;
+                o.TracesSampleRate = isDebug ? 1 : 0.25;
                 o.Debug = true;
             }))
             {
@@ -59,7 +66,7 @@ namespace AudioMixer
             SentrySdk.CaptureMessage(e.ToString(), scope => scope.TransactionName = "UnhandledException");
 
             // For safety, clear all settings.
-            await PluginController.ResetGlobalSettings();
+            // await PluginController.ResetGlobalSettings();
         }
     }
 }
