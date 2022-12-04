@@ -35,6 +35,7 @@ namespace AudioMixer
                 o.Release = "audio-mixer@1.3.0";
                 o.Environment = isDebug ? "development" : "production";
                 o.MaxBreadcrumbs = 50;
+                o.SampleRate = isDebug ? 1f : 0.25f;
                 o.TracesSampleRate = isDebug ? 1 : 0.25;
                 o.Debug = isDebug;
             }))
