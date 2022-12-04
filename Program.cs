@@ -36,7 +36,7 @@ namespace AudioMixer
                 o.Environment = isDebug ? "development" : "production";
                 o.MaxBreadcrumbs = 50;
                 o.TracesSampleRate = isDebug ? 1 : 0.25;
-                o.Debug = true;
+                o.Debug = isDebug;
             }))
             {
                 LogManager.Configuration = new LoggingConfiguration();
