@@ -16,6 +16,7 @@ function websocketOnMessage(evt) {
         console.log('didReceiveSettings', payload)
 
         loadConfiguration(payload.settings);
+        populateStaticApp(payload.settings);
         populateBlacklist(payload.settings);
     }
     else {
@@ -26,7 +27,16 @@ function websocketOnMessage(evt) {
 function initPropertyInspector() {
     // Place to add functions
     prepareDOMElements(document);
+    populateStaticApp(actionInfo.payload.settings);
     populateBlacklist(actionInfo.payload.settings);
+}
+
+function populateStaticApp(payload) {
+    console.log('populateStaticApp', payload);
+    const { staticApplication } = payload;
+
+    if (!staticApplication?.processName) return;
+    document.getElementById("staticApplicationSelector").value = staticApplication.processName;
 }
 
 function populateBlacklist(payload) {

@@ -83,6 +83,7 @@ namespace AudioMixer
         {
             var audioSession = new AudioSession(pluginController, device, session);
             audioSessions.Add(audioSession);
+
             pluginController.UpdateActions();
         }
 

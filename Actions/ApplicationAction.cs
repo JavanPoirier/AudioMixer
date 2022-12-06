@@ -30,7 +30,6 @@ namespace AudioMixer
                     DeviceId = null,
                     VolumeStep = VOLUME_STEP,
                     StaticApplication = null,
-                    StaticApplications = new List<AudioSessionSetting>(),
                     StaticApplicationSelector = new List<AudioSessionSetting>(),
                     BlacklistApplicationName = null,
                     BlacklistedApplications = new List<AudioSessionSetting>(),
@@ -56,9 +55,6 @@ namespace AudioMixer
 
             [JsonProperty(PropertyName = "staticApplication")]
             public AudioSessionSetting StaticApplication { get; set; }
-
-            [JsonProperty(PropertyName = "staticApplications")]
-            public List<AudioSessionSetting> StaticApplications { get; set; }
 
             [JsonProperty(PropertyName = "staticApplicationSelector")]
             public List<AudioSessionSetting> StaticApplicationSelector { get; set; }
@@ -344,6 +340,8 @@ namespace AudioMixer
                     pluginController.AddActionToQueue(this);
                 }
             }
+
+           /* RefreshApplicationSelectors();*/
         }
 
         public void ReleaseAudioSession(bool resetIcon = true)
@@ -606,7 +604,7 @@ namespace AudioMixer
                 }
             );
 
-            var staticApp = settings.StaticApplications.Find(session => session.processName == processName);
+            var staticApp = globalSettings.StaticApplications.Find(session => session.processName == processName);
             if (staticApp != null) return;
 
             var existingBlacklistedApp = settings.BlacklistedApplications.Find(session => session.processName == processName);
@@ -626,8 +624,7 @@ namespace AudioMixer
                 }
             }
 
-            await SetGlobalSettings();
-            await SaveSettings();
+            await RefreshApplicationSelectors();
         }
 
         public async Task RefreshApplicationSelectors()
@@ -647,12 +644,15 @@ namespace AudioMixer
             settings.BlacklistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
             settings.WhitelistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
 
-            // TODO: Add additional logic removing imposible combinations.
-            settings.StaticApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Contains(app));
-            // TODO: Handle if one was already set.
+            // TODO: Add additional logic removing imposible combinations. Handle if one was already set.
+            settings.StaticApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
+            settings.StaticApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
+            if (settings.StaticApplication != null && !settings.StaticApplicationSelector.Contains(settings.StaticApplication)) settings.StaticApplicationSelector.Add(settings.StaticApplication);
 
-            settings.BlacklistApplicationSelector.RemoveAll(app => !settings.WhitelistApplicationSelector.Contains(app));
-            settings.WhitelistApplicationSelector.RemoveAll(app => !settings.BlacklistApplicationSelector.Contains(app));
+            settings.BlacklistApplicationSelector.RemoveAll(app => settings.WhitelistedApplications.Find(_app => _app.processName == app.processName) != null);
+            settings.BlacklistApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
+
+            settings.WhitelistApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
 
             await SetGlobalSettings();
             await SaveSettings();
@@ -675,7 +675,6 @@ namespace AudioMixer
                 {
                     globalSettings = payload.Settings.ToObject<GlobalSettings>();
                     settings.VolumeStep = globalSettings.VolumeStep;
-                    settings.StaticApplications = globalSettings.StaticApplications;
                     settings.BlacklistedApplications = globalSettings.BlacklistedApplications;
                     settings.WhitelistedApplications = globalSettings.WhitelistedApplications;
                     settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
@@ -712,7 +711,6 @@ namespace AudioMixer
         private Task SetGlobalSettings()
         {
             globalSettings.VolumeStep = settings.VolumeStep;
-            globalSettings.StaticApplications = settings.StaticApplications;
             globalSettings.BlacklistedApplications = settings.BlacklistedApplications;
             globalSettings.WhitelistedApplications = settings.WhitelistedApplications;
             globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
@@ -812,27 +810,36 @@ namespace AudioMixer
 
                         if (value == "")
                         {
+                            if (settings.StaticApplication == null) return;
+
+                            globalSettings.StaticApplications.Remove(settings.StaticApplication);
+
                             settings.StaticApplication = null;
                             settings.StaticApplicationName = null;
                         }
                         else
                         {
                             audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
-                            if (audioSession != null)
-                            {
-                                settings.StaticApplication = new AudioSessionSetting(audioSession);
-                                settings.StaticApplicationName = settings.StaticApplication.processName;
-                            }
+                            if (audioSession == null) return;
+                            // Ensure it is not already a static application.
+                            if (globalSettings.StaticApplications.Find(session => session.processName == payload["value"].ToString()) != null) return;
+                                                        
+                            settings.StaticApplication = new AudioSessionSetting(audioSession);
+                            settings.StaticApplicationName = settings.StaticApplication.processName;
+
+                            globalSettings.StaticApplications.Add(settings.StaticApplication);
                         }
 
+                        await SetGlobalSettings();
                         await SaveSettings();
+
                         pluginController.UpdateActions();
                         break;
                     case "toggleblacklistapp":
                         ToggleBlacklistApp(payload["value"].ToString());
                         break;
                     case "refreshapplications":
-                        await RefreshApplicationSelectors();
+                        RefreshApplicationSelectors();
                         break;
                     case "resetsettings":
                         ResetSettings();
