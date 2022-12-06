@@ -31,12 +31,13 @@ namespace AudioMixer
                     VolumeStep = VOLUME_STEP,
                     StaticApplication = null,
                     StaticApplications = new List<AudioSessionSetting>(),
+                    StaticApplicationSelector = new List<AudioSessionSetting>(),
                     BlacklistApplicationName = null,
-                    BlacklistApplications = new List<AudioSessionSetting>(),
                     BlacklistedApplications = new List<AudioSessionSetting>(),
+                    BlacklistApplicationSelector = new List<AudioSessionSetting>(),
                     WhitelistApplicationName = null,
-                    WhitelistApplications = new List<AudioSessionSetting>(),
                     WhitelistedApplications = new List<AudioSessionSetting>(),
+                    WhitelistApplicationSelector = new List<AudioSessionSetting>(),
                     InlineControlsEnabled = true,
                     InlineControlsHoldDuration = INLINE_CONTROLS_HOLD_DURATION,
                     InlineControlsTimeout = INLINE_CONTROLS_TIMEOUT,
@@ -59,8 +60,8 @@ namespace AudioMixer
             [JsonProperty(PropertyName = "staticApplications")]
             public List<AudioSessionSetting> StaticApplications { get; set; }
 
-            [JsonProperty(PropertyName = "blacklistApplications")]
-            public List<AudioSessionSetting> BlacklistApplications { get; set; }
+            [JsonProperty(PropertyName = "staticApplicationSelector")]
+            public List<AudioSessionSetting> StaticApplicationSelector { get; set; }
 
             [JsonProperty(PropertyName = "blacklistApplicationName")]
             public string BlacklistApplicationName { get; set; }
@@ -68,14 +69,17 @@ namespace AudioMixer
             [JsonProperty(PropertyName = "blacklistedApplications")]
             public List<AudioSessionSetting> BlacklistedApplications { get; set; }
 
-            [JsonProperty(PropertyName = "whitelistApplications")]
-            public List<AudioSessionSetting> WhitelistApplications { get; set; }
+            [JsonProperty(PropertyName = "blacklistApplicationSelector")]
+            public List<AudioSessionSetting> BlacklistApplicationSelector { get; set; }
 
             [JsonProperty(PropertyName = "whitelistedApplicationName")]
             public string WhitelistApplicationName { get; set; }
 
             [JsonProperty(PropertyName = "whitelistedApplications")]
             public List<AudioSessionSetting> WhitelistedApplications { get; set; }
+
+            [JsonProperty(PropertyName = "whitelistApplicationSelector")]
+            public List<AudioSessionSetting> WhitelistApplicationSelector { get; set; }
 
             [JsonProperty(PropertyName = "inlineControlsEnabled")]
             public bool InlineControlsEnabled { get; set; }
@@ -137,15 +141,23 @@ namespace AudioMixer
             }
             else
             {
-                // TODO: Create & assign a default and merge to allow for compatability of new features.
-                settings = payload.Settings.ToObject<PluginSettings>();
+                try
+                {
+                    // TODO: Create & assign a default and merge to allow for compatability of new features.
+                    settings = payload.Settings.ToObject<PluginSettings>();
+                } catch (Exception ex)
+                {
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, $"Assigning settings from the constructor payload failed. Resetting...");
+                    Connection.LogSDMessage($"Assigning settings from the constructor payload failed. Resetting...");
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+
+                    ResetSettings();
+                }
             }
 
             Connection.GetGlobalSettingsAsync();
-            InitializeSettings();
 
             Connection.OnSendToPlugin += OnSendToPlugin;
-
             timer.Elapsed += KeyHoldEvent;
         }
 
@@ -618,7 +630,7 @@ namespace AudioMixer
             await SaveSettings();
         }
 
-        public void RefreshApplications()
+        public async Task RefreshApplicationSelectors()
         {
             SentrySdk.AddBreadcrumb(
                 message: "Refresh applications",
@@ -631,15 +643,19 @@ namespace AudioMixer
             // Remove duplicate process'
             var distinctApplications = applications.DistinctBy(app => app.processName).ToList();
 
-            settings.StaticApplications = distinctApplications;
-            settings.BlacklistApplications = new List<AudioSessionSetting>(distinctApplications);
-            settings.WhitelistApplications = new List<AudioSessionSetting>(distinctApplications);
+            settings.StaticApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
+            settings.BlacklistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
+            settings.WhitelistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
 
-            settings.BlacklistApplications.RemoveAll(app => !settings.WhitelistApplications.Contains(app));
-            settings.WhitelistApplications.RemoveAll(app => !settings.BlacklistApplications.Contains(app));
+            // TODO: Add additional logic removing imposible combinations.
+            settings.StaticApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Contains(app));
+            // TODO: Handle if one was already set.
 
-            SetGlobalSettings();
-            SaveSettings();
+            settings.BlacklistApplicationSelector.RemoveAll(app => !settings.WhitelistApplicationSelector.Contains(app));
+            settings.WhitelistApplicationSelector.RemoveAll(app => !settings.BlacklistApplicationSelector.Contains(app));
+
+            await SetGlobalSettings();
+            await SaveSettings();
         }
 
         // Global settings are received on action initialization. Local settings are only received when changed in the PI.
@@ -659,20 +675,20 @@ namespace AudioMixer
                 {
                     globalSettings = payload.Settings.ToObject<GlobalSettings>();
                     settings.VolumeStep = globalSettings.VolumeStep;
-                    settings.BlacklistApplications = globalSettings.BlacklistApplications;
+                    settings.StaticApplications = globalSettings.StaticApplications;
                     settings.BlacklistedApplications = globalSettings.BlacklistedApplications;
+                    settings.WhitelistedApplications = globalSettings.WhitelistedApplications;
                     settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
                     settings.InlineControlsHoldDuration = globalSettings?.InlineControlsHoldDuration ?? GlobalSettings.INLINE_CONTROLS_HOLD_DURATION;
                     settings.InlineControlsTimeout = globalSettings?.InlineControlsTimeout ?? GlobalSettings.INLINE_CONTROLS_TIMEOUT;
-                    await InitializeSettings();
                     await SaveSettings();
 
-                    // Only once the settings are set do we add the action.
+                    // Only once the settings are set do we then add the action.
                     var currentAction = pluginController.applicationActions.Find((action) => action.coords == coords);
                     if (currentAction == null)
                     {
                         pluginController.AddAction(this);
-                        RefreshApplications();
+                        RefreshApplicationSelectors();
                     }
 
                     pluginController.UpdateActions();
@@ -689,45 +705,20 @@ namespace AudioMixer
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
                 SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
 
-                globalSettings = GlobalSettings.CreateDefaultSettings();
-                await SetGlobalSettings();
+                ResetSettings();
             }
         }
 
         private Task SetGlobalSettings()
         {
             globalSettings.VolumeStep = settings.VolumeStep;
-
-            // Concat blacklistApplications with existing blacklistedApplications and remove duplicate process. This is required as the
-            // process wanting to be removed fromt he blacklist may not be running.
-            globalSettings.BlacklistApplications = settings.BlacklistApplications.Concat(settings.BlacklistedApplications).DistinctBy(app => app.processName).ToList();
-
+            globalSettings.StaticApplications = settings.StaticApplications;
             globalSettings.BlacklistedApplications = settings.BlacklistedApplications;
             globalSettings.WhitelistedApplications = settings.WhitelistedApplications;
             globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
             globalSettings.InlineControlsHoldDuration = settings.InlineControlsHoldDuration;
 
             return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
-        }
-
-        private async Task InitializeSettings()
-        {
-            if (String.IsNullOrEmpty(settings.VolumeStep))
-            {
-                settings.VolumeStep = PluginSettings.VOLUME_STEP;
-            }
-
-            if (settings.BlacklistApplications == null)
-            {
-                settings.BlacklistApplications = new List<AudioSessionSetting>();
-            }
-
-            if (settings.BlacklistedApplications == null)
-            {
-                settings.BlacklistedApplications = new List<AudioSessionSetting>();
-            }
-
-            await SaveSettings();
         }
 
         public override async void ReceivedSettings(ReceivedSettingsPayload payload)
@@ -742,7 +733,6 @@ namespace AudioMixer
                 );
 
                 Tools.AutoPopulateSettings(settings, payload.Settings);
-                await InitializeSettings();
 
                 await SetGlobalSettings();
                 await SaveSettings();
@@ -751,8 +741,7 @@ namespace AudioMixer
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedSettings Exception: {ex}");
                 SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
 
-                settings = PluginSettings.CreateDefaultSettings();
-                await SaveSettings();
+                ResetSettings();
             }
         }
 
@@ -778,9 +767,12 @@ namespace AudioMixer
                 data: new Dictionary<string, string> { { "setting", settings.ToString() } }
             );
 
+            globalSettings = GlobalSettings.CreateDefaultSettings();
             settings = PluginSettings.CreateDefaultSettings();
             await SetGlobalSettings();
             await SaveSettings();
+
+            await RefreshApplicationSelectors();
         }
 
         private async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
@@ -840,7 +832,7 @@ namespace AudioMixer
                         ToggleBlacklistApp(payload["value"].ToString());
                         break;
                     case "refreshapplications":
-                        RefreshApplications();
+                        await RefreshApplicationSelectors();
                         break;
                     case "resetsettings":
                         ResetSettings();

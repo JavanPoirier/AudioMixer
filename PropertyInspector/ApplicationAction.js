@@ -46,7 +46,7 @@ function populateBlacklist(payload) {
 function setStaticApp(clear) {
     var payload = {};
 
-    var { value } = document.getElementById("staticApplications");
+    var { value } = document.getElementById("staticApplicationSelector");
     payload.value = clear ? null : value;
     payload.property_inspector = 'setStaticApp';
     sendPayloadToPlugin(payload);
@@ -54,7 +54,7 @@ function setStaticApp(clear) {
 
 function toggleBlacklistApp() {
     let payload = {}
-    var { value } = document.getElementById("blacklistApplications");
+    var { value } = document.getElementById("blacklistApplicationSelector");
 
     payload.value = value;
     payload.property_inspector = 'toggleBlacklistApp';

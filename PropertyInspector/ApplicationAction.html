@@ -17,7 +17,7 @@
         <!--  -->
         <div class="sdpi-item" id="dvStaticApp">
             <div class="sdpi-item-label">Application</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="staticApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApp()"></select>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticApplicationSelector" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApp()"></select>
             <button class="sdpi-item-value max20" onclick="setStaticApp(true)">Clear</button>
         </div>
         <div class="sdpi-item">
@@ -69,9 +69,9 @@
             <div class="sdpi-item-label">Blacklist</div>
             <ol class="sdpi-item-value" id="blacklist" style="height:100px;"></ol>
         </div>
-        <div class="sdpi-item" id="dvBlacklistSelector">
+        <div class="sdpi-item" id="dvBlacklistApplicationSelector">
             <div class="sdpi-item-label" style="font-size:0"></div>
-            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="blacklistApplicationName" oninput=""></select>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplicationSelector" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="blacklistApplicationName" oninput=""></select>
             <button class="max20" onclick="toggleBlacklistApp()">Add/Remove</button>
         </div>
 
