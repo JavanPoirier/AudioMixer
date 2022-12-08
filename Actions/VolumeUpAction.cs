@@ -45,17 +45,28 @@ namespace AudioMixer.Actions
         private PluginController pluginController = PluginController.Instance;
         private System.Timers.Timer timer = new System.Timers.Timer(GlobalSettings.INLINE_CONTROLS_HOLD_DURATION);
         private PluginSettings settings;
-
-        private SDConnection connection;
         private GlobalSettings globalSettings;
 
         public VolumeUpAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
-            this.connection = connection;
+            if (pluginController.deviceId == null)
+            {
+                pluginController.deviceId = Connection.DeviceId;
+
+                SentrySdk.ConfigureScope(scope =>
+                {
+                    scope.User = new User
+                    {
+                        Id = pluginController.deviceId
+                    };
+                });
+
+                SentrySdk.CaptureMessage("Initialized", scope => scope.TransactionName = "VolumeUpAction", SentryLevel.Info);
+            }
 
             SentrySdk.AddBreadcrumb(
                 message: "Initializiing VolumeUp key",
-                category: "VolumeUp",
+                category: "VolumeUpAction",
                 level: BreadcrumbLevel.Info
             );
 
@@ -66,11 +77,22 @@ namespace AudioMixer.Actions
             }
             else
             {
-                this.settings = payload.Settings.ToObject<PluginSettings>();
+                try
+                {
+                    // TODO: Create & assign a default and merge to allow for compatability of new features.
+                    settings = payload.Settings.ToObject<PluginSettings>();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, $"Assigning settings from the constructor payload failed. Resetting...");
+                    Connection.LogSDMessage($"Assigning settings from the constructor payload failed. Resetting...");
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUpAction"; });
+
+                    ResetSettings();
+                }
             }
 
             Connection.GetGlobalSettingsAsync();
-            connection.SetImageAsync(Utils.CreateVolumeUpKey(null), null, true);
 
             timer.Elapsed += KeyHoldEvent;
         }
@@ -84,7 +106,7 @@ namespace AudioMixer.Actions
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
             SentrySdk.AddBreadcrumb(
                 message: "Key pressed",
-                category: "VolumeUp",
+                category: "VolumeUpAction",
                 level: BreadcrumbLevel.Info
             );
 
@@ -101,13 +123,25 @@ namespace AudioMixer.Actions
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
             SentrySdk.AddBreadcrumb(
                 message: "Key released",
-                category: "VolumeUp",
+                category: "VolumeUpAction",
                 level: BreadcrumbLevel.Info
             );
 
             timer.Stop();
 
             VolumeUp();
+        }
+
+        private async void SetVolumeKey()
+        {
+            try
+            {
+                float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
+                await Connection.SetImageAsync(Utils.CreateVolumeUpKey(volumeStep), null, true);
+            } catch (Exception ex)
+            {
+                await Connection.SetImageAsync(Utils.CreateVolumeUpKey(null), null, true);
+            }
         }
 
         private void VolumeUp()
@@ -119,7 +153,7 @@ namespace AudioMixer.Actions
                 {
                     SentrySdk.AddBreadcrumb(
                         message: "No selected action for volume to control",
-                        category: "VolumeUp",
+                        category: "VolumeUpAction",
                         level: BreadcrumbLevel.Info
                     );
                     return;
@@ -143,7 +177,7 @@ namespace AudioMixer.Actions
             catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUp"; });
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUpAction"; });
             }
         }
 
@@ -165,7 +199,6 @@ namespace AudioMixer.Actions
                     globalSettings = payload.Settings.ToObject<GlobalSettings>();
                     settings.GlobalVolumeStep = globalSettings.VolumeStep;
                     settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
-                    await InitializeSettings();
                     await SaveSettings();
                 }
                 else // Global settings do not exist, create new one and SAVE it
@@ -174,14 +207,15 @@ namespace AudioMixer.Actions
                     globalSettings = GlobalSettings.CreateDefaultSettings();
                     await SetGlobalSettings();
                 }
+
+                SetVolumeKey();
             }
             catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUp"; });
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUpAction"; });
 
-                globalSettings = GlobalSettings.CreateDefaultSettings();
-                await SetGlobalSettings();
+                ResetSettings();
             }
         }
 
@@ -191,19 +225,6 @@ namespace AudioMixer.Actions
             globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
 
             return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
-        }
-
-        private async Task InitializeSettings()
-        {
-            if (String.IsNullOrEmpty(settings.IndependantVolumeStep))
-            {
-                settings.IndependantVolumeStep = PluginSettings.VOLUME_STEP;
-            }
-
-            float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
-            await connection.SetImageAsync(Utils.CreateVolumeUpKey(volumeStep), null, true);
-
-            await SaveSettings();
         }
 
         public override async void ReceivedSettings(ReceivedSettingsPayload payload)
@@ -218,26 +239,37 @@ namespace AudioMixer.Actions
                );
 
                 Tools.AutoPopulateSettings(settings, payload.Settings);
-                await InitializeSettings();
 
                 await SetGlobalSettings();
                 await SaveSettings();
-
-                float volumeStep = float.Parse(settings.GlobalLock ? settings.GlobalVolumeStep : settings.IndependantVolumeStep);
-                await connection.SetImageAsync(Utils.CreateVolumeUpKey(volumeStep), null, true);
             } catch(Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedSettings Exception: {ex}");
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUp"; });
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUpAction"; });
 
-                settings = PluginSettings.CreateDefaultSettings();
-                await SaveSettings();
+                ResetSettings();
             }
         }
 
+        // NOTE: SetSettingsAsync does NOT fiere the ReceivedSettings event. 
         private Task SaveSettings()
         {
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
+        }
+
+        private async void ResetSettings()
+        {
+            SentrySdk.AddBreadcrumb(
+                message: "Reset settings",
+                category: "ApplicationAction",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
+            );
+
+            globalSettings = GlobalSettings.CreateDefaultSettings();
+            settings = PluginSettings.CreateDefaultSettings();
+            await SetGlobalSettings();
+            await SaveSettings();
         }
 
         public override void OnTick() { }
