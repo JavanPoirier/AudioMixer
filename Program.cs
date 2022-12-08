@@ -32,7 +32,7 @@ namespace AudioMixer
             {
                 o.Dsn = "https://4a22d40cccbc4268abe582e0e30e6ae3@o1232787.ingest.sentry.io/6381003";
                 o.AutoSessionTracking = true;
-                o.Release = "audio-mixer@1.3.0";
+                o.Release = "audio-mixer@1.3.1";
                 o.Environment = isDebug ? "development" : "production";
                 o.MaxBreadcrumbs = 50;
                 o.SampleRate = isDebug ? 1f : 0.25f;
