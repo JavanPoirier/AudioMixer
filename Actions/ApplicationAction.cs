@@ -641,13 +641,14 @@ namespace AudioMixer
             // Remove duplicate process'
             var distinctApplications = applications.DistinctBy(app => app.processName).ToList();
 
+            /**
+            * Static
+            **/
             settings.StaticApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
-            settings.BlacklistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
-            settings.WhitelistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
 
             // TODO: Add additional logic removing imposible combinations. Handle if one was already set.
             settings.StaticApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
-            settings.StaticApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
+            settings.StaticApplicationSelector.RemoveAll(app => globalSettings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
 
             // If this is a static process which does not have an active audio session, add it to the selector.
             if (settings.StaticApplication != null)
@@ -658,9 +659,21 @@ namespace AudioMixer
                 }
             }
 
-            settings.BlacklistApplicationSelector.RemoveAll(app => settings.WhitelistedApplications.Find(_app => _app.processName == app.processName) != null);
+            /**
+             * Blacklist
+             * 
+             * NOTES: 
+             * - The blacklist selector should also include blacklisted apps
+             **/
+            settings.BlacklistApplicationSelector = new List<AudioSessionSetting>(distinctApplications).Concat(globalSettings.BlacklistedApplications).DistinctBy(app => app.processName).ToList();
             settings.BlacklistApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
+            settings.BlacklistApplicationSelector.RemoveAll(app => globalSettings.WhitelistedApplications.Find(_app => _app.processName == app.processName) != null);
 
+
+            /**
+             * Whitlist
+             **/
+            settings.WhitelistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
             settings.WhitelistApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
 
             if (save)
@@ -814,10 +827,20 @@ namespace AudioMixer
             }
             else
             {
+                // If one was previously set, remove it.
+                if (settings.StaticApplication != null) 
+                {
+                    var staticApplication = globalSettings.StaticApplications.Find(session => session.processName == settings.StaticApplication.processName);
+                    globalSettings.StaticApplications.Remove(staticApplication);
+                }
+
                 AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
                 if (audioSession == null) return;
-                // Ensure it is not already a static application.
+
+                // Ensure it is not a static application.
                 if (globalSettings.StaticApplications.Find(session => session.processName == processName) != null) return;
+                // Ensure it is not in the blacklist.
+                if (globalSettings.BlacklistedApplications.Find(app => app.processName == processName) != null) return;
 
                 settings.StaticApplication = new AudioSessionSetting(audioSession);
                 settings.StaticApplicationName = settings.StaticApplication.processName;
