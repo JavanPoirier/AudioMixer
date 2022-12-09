@@ -105,7 +105,15 @@ namespace AudioMixer
                 applicationActions.ToList().ForEach(action => action.ReleaseAudioSession(false));
 
                 ApplicationAction enqueuedAction;
-                while (actionQueue.TryDequeue(out enqueuedAction)) enqueuedAction.SetAudioSession();
+                while (actionQueue.TryDequeue(out enqueuedAction))
+                {
+                    enqueuedAction.SetAudioSession();
+                    try
+                    {
+                        enqueuedAction.RefreshApplicationSelectors();
+                    }
+                    catch { }
+                }
             }
         }
 

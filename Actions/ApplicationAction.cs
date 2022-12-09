@@ -157,15 +157,18 @@ namespace AudioMixer
             timer.Elapsed += KeyHoldEvent;
         }
 
+        // User has deleted the action from the device.
         public override void Dispose()
         {
             Logger.Instance.LogMessage(TracingLevel.INFO, $"Destructor called");
             Connection.OnSendToPlugin -= OnSendToPlugin;
+            if (timer != null) timer.Dispose();
+
+            // Required before releasing...
+            ToggleStaticApp(null);
 
             ReleaseAudioSession();
             pluginController.RemoveAction(this);
-
-            if (timer != null) timer.Dispose();
         }
 
         // NOTE:
@@ -340,8 +343,6 @@ namespace AudioMixer
                     pluginController.AddActionToQueue(this);
                 }
             }
-
-           /* RefreshApplicationSelectors();*/
         }
 
         public void ReleaseAudioSession(bool resetIcon = true)
@@ -624,10 +625,10 @@ namespace AudioMixer
                 }
             }
 
-            await RefreshApplicationSelectors();
+            await SaveGlobalSettings();
         }
 
-        public async Task RefreshApplicationSelectors()
+        public async Task RefreshApplicationSelectors(bool save = true)
         {
             SentrySdk.AddBreadcrumb(
                 message: "Refresh applications",
@@ -647,15 +648,25 @@ namespace AudioMixer
             // TODO: Add additional logic removing imposible combinations. Handle if one was already set.
             settings.StaticApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
             settings.StaticApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
-            if (settings.StaticApplication != null && !settings.StaticApplicationSelector.Contains(settings.StaticApplication)) settings.StaticApplicationSelector.Add(settings.StaticApplication);
+
+            // If this is a static process which does not have an active audio session, add it to the selector.
+            if (settings.StaticApplication != null)
+            {
+                var staticApplication = settings.StaticApplicationSelector.Find(app => app.processName == settings.StaticApplication.processName); 
+                if (staticApplication == null) {
+                    settings.StaticApplicationSelector.Add(settings.StaticApplication);
+                }
+            }
 
             settings.BlacklistApplicationSelector.RemoveAll(app => settings.WhitelistedApplications.Find(_app => _app.processName == app.processName) != null);
             settings.BlacklistApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
 
             settings.WhitelistApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
 
-            await SetGlobalSettings();
-            await SaveSettings();
+            if (save)
+            {
+                await SaveSettings();
+            }
         }
 
         // Global settings are received on action initialization. Local settings are only received when changed in the PI.
@@ -680,6 +691,7 @@ namespace AudioMixer
                     settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
                     settings.InlineControlsHoldDuration = globalSettings?.InlineControlsHoldDuration ?? GlobalSettings.INLINE_CONTROLS_HOLD_DURATION;
                     settings.InlineControlsTimeout = globalSettings?.InlineControlsTimeout ?? GlobalSettings.INLINE_CONTROLS_TIMEOUT;
+                    await RefreshApplicationSelectors(false);
                     await SaveSettings();
 
                     // Only once the settings are set do we then add the action.
@@ -687,7 +699,6 @@ namespace AudioMixer
                     if (currentAction == null)
                     {
                         pluginController.AddAction(this);
-                        RefreshApplicationSelectors();
                     }
 
                     pluginController.UpdateActions();
@@ -696,7 +707,7 @@ namespace AudioMixer
                 {
                     Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
                     globalSettings = GlobalSettings.CreateDefaultSettings();
-                    await SetGlobalSettings();
+                    await SaveGlobalSettings();
                 }
             }
             catch (Exception ex)
@@ -708,8 +719,15 @@ namespace AudioMixer
             }
         }
 
-        private Task SetGlobalSettings()
+        private Task SaveGlobalSettings()
         {
+            SentrySdk.AddBreadcrumb(
+                message: "Save global settings",
+                category: "ApplicationAction",
+                level: BreadcrumbLevel.Info,
+                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
+            );
+
             globalSettings.VolumeStep = settings.VolumeStep;
             globalSettings.BlacklistedApplications = settings.BlacklistedApplications;
             globalSettings.WhitelistedApplications = settings.WhitelistedApplications;
@@ -719,6 +737,7 @@ namespace AudioMixer
             return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
         }
 
+        // NOTE: Does not get called by calls to SaveSettings
         public override async void ReceivedSettings(ReceivedSettingsPayload payload)
         {
             try
@@ -732,7 +751,7 @@ namespace AudioMixer
 
                 Tools.AutoPopulateSettings(settings, payload.Settings);
 
-                await SetGlobalSettings();
+                await SaveGlobalSettings();
                 await SaveSettings();
             } catch(Exception ex)
             {
@@ -753,10 +772,11 @@ namespace AudioMixer
             );
 
             settings.DeviceId = pluginController.deviceId;
+
             return Connection.SetSettingsAsync(JObject.FromObject(settings));
         }
 
-        private async void ResetSettings()
+        private async void ResetSettings(bool includeGlobal = true)
         {
             SentrySdk.AddBreadcrumb(
                 message: "Reset settings",
@@ -764,13 +784,51 @@ namespace AudioMixer
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> { { "setting", settings.ToString() } }
             );
+            
+            if (includeGlobal)
+            {
+                globalSettings = GlobalSettings.CreateDefaultSettings();
+                await SaveGlobalSettings();
+            }
 
-            globalSettings = GlobalSettings.CreateDefaultSettings();
             settings = PluginSettings.CreateDefaultSettings();
-            await SetGlobalSettings();
             await SaveSettings();
 
             await RefreshApplicationSelectors();
+        }
+
+        private async void ToggleStaticApp(string processName)
+        {
+            if (string.IsNullOrEmpty(processName))
+            {
+                if (settings.StaticApplication == null) return;
+
+                var staticApplication = globalSettings.StaticApplications.Find(session => session.processName == settings.StaticApplication.processName);
+                if (staticApplication != null)
+                {
+                    globalSettings.StaticApplications.Remove(staticApplication);
+
+                    settings.StaticApplication = null;
+                    settings.StaticApplicationName = null;
+                }  
+            }
+            else
+            {
+                AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
+                if (audioSession == null) return;
+                // Ensure it is not already a static application.
+                if (globalSettings.StaticApplications.Find(session => session.processName == processName) != null) return;
+
+                settings.StaticApplication = new AudioSessionSetting(audioSession);
+                settings.StaticApplicationName = settings.StaticApplication.processName;
+
+                globalSettings.StaticApplications.Add(settings.StaticApplication);
+            }
+
+            await SaveGlobalSettings();
+            await SaveSettings();
+
+            pluginController.UpdateActions();
         }
 
         private async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
@@ -802,38 +860,10 @@ namespace AudioMixer
 
             if (payload["property_inspector"] != null)
             {
-                AudioSession audioSession;
                 switch (payload["property_inspector"].ToString().ToLowerInvariant())
                 {
                     case "setstaticapp":
-                        var value = payload["value"].ToString();
-
-                        if (value == "")
-                        {
-                            if (settings.StaticApplication == null) return;
-
-                            globalSettings.StaticApplications.Remove(settings.StaticApplication);
-
-                            settings.StaticApplication = null;
-                            settings.StaticApplicationName = null;
-                        }
-                        else
-                        {
-                            audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == payload["value"].ToString());
-                            if (audioSession == null) return;
-                            // Ensure it is not already a static application.
-                            if (globalSettings.StaticApplications.Find(session => session.processName == payload["value"].ToString()) != null) return;
-                                                        
-                            settings.StaticApplication = new AudioSessionSetting(audioSession);
-                            settings.StaticApplicationName = settings.StaticApplication.processName;
-
-                            globalSettings.StaticApplications.Add(settings.StaticApplication);
-                        }
-
-                        await SetGlobalSettings();
-                        await SaveSettings();
-
-                        pluginController.UpdateActions();
+                        ToggleStaticApp(payload["value"].ToString());
                         break;
                     case "toggleblacklistapp":
                         ToggleBlacklistApp(payload["value"].ToString());
