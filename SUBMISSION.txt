@@ -36,6 +36,8 @@ Release Notes:
 - Fixed issue with static volume keys not respecting volume step.
 - Fixed issue with applications remaining selected when the session is lost.
 - Fixed process with multiple audio sessions not have the same volume on initialization.
+- Fixed issue with settings initialization
+- Fixed some cases where settings selectors not populating
 
 Support-Link: https://github.com/JavanPoirier/AudioMixer
 

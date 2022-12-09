@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Sentry;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Timers;
 
@@ -23,8 +24,6 @@ namespace AudioMixer.Actions
             }
         }
 
-        public readonly SDConnection connection;
-
         #region Private Members
         private PluginController pluginController = PluginController.Instance;
         private System.Timers.Timer timer = new System.Timers.Timer(3000);
@@ -34,11 +33,24 @@ namespace AudioMixer.Actions
 
         public VolumeMuteAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
         {
-            this.connection = connection;
+            if (pluginController.deviceId == null)
+            {
+                pluginController.deviceId = Connection.DeviceId;
+
+                SentrySdk.ConfigureScope(scope =>
+                {
+                    scope.User = new User
+                    {
+                        Id = pluginController.deviceId
+                    };
+                });
+
+                SentrySdk.CaptureMessage("Initialized", scope => scope.TransactionName = "VolumeMuteAction", SentryLevel.Info);
+            }
 
             SentrySdk.AddBreadcrumb(
                 message: "Initializiing VolumeMute key",
-                category: "VolumeMute",
+                category: "VolumeMuteAction",
                 level: BreadcrumbLevel.Info
             );
 
@@ -49,10 +61,21 @@ namespace AudioMixer.Actions
             }
             else
             {
-                this.settings = payload.Settings.ToObject<PluginSettings>();
+                try
+                {
+                    this.settings = payload.Settings.ToObject<PluginSettings>();
+                } catch (Exception ex)
+                {
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, $"Assigning settings from the constructor payload failed. Resetting...");
+                    Connection.LogSDMessage($"Assigning settings from the constructor payload failed. Resetting...");
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeMuteAction"; });
+
+                    this.settings = PluginSettings.CreateDefaultSettings();
+                    SaveSettings();
+                }
             }
 
-            connection.SetImageAsync(Utils.CreateMuteKey(), null, true);
+            Connection.SetImageAsync(Utils.CreateMuteKey(), null, true);
         }
 
         public override void Dispose()
@@ -63,7 +86,7 @@ namespace AudioMixer.Actions
         {
             SentrySdk.AddBreadcrumb(
                 message: "Key pressed",
-                category: "VolumeMute",
+                category: "VolumeMuteAction",
                 level: BreadcrumbLevel.Info
             );
 
@@ -80,13 +103,12 @@ namespace AudioMixer.Actions
 
         public override void KeyReleased(KeyPayload payload)
         {
+            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
             SentrySdk.AddBreadcrumb(
                 message: "Key released",
-                category: "VolumeMute",
+                category: "VolumeMuteAction",
                 level: BreadcrumbLevel.Info
             );
-
-            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
 
             timer.Stop();
             // If the timer of 3 seconds has passed.
@@ -119,13 +141,30 @@ namespace AudioMixer.Actions
             }
         }
 
+        public override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload) { }
+
         public override void ReceivedSettings(ReceivedSettingsPayload payload)
         {
-            Tools.AutoPopulateSettings(settings, payload.Settings);
-            SaveSettings();
+            try
+            {
+                SentrySdk.AddBreadcrumb(
+                   message: "Received settings",
+                   category: "VolumeMuteAction",
+                   level: BreadcrumbLevel.Info,
+                   data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
+                );
+                Tools.AutoPopulateSettings(settings, payload.Settings);
+                SaveSettings();
+            } catch(Exception ex)
+            {
+                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedSettings Exception: {ex}");
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "VolumeUpAction"; });
+
+                this.settings = PluginSettings.CreateDefaultSettings();
+                SaveSettings();
+            }
         }
 
-        public override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload) { }
 
         private Task SaveSettings()
         {
