@@ -102,7 +102,10 @@ namespace AudioMixer
                         }
                     );
 
-                    processIcon = Icon.ExtractAssociatedIcon(processFilePath).ToBitmap();
+                    if ( processFilePath != null )
+                    {
+                        processIcon = Icon.ExtractAssociatedIcon(processFilePath).ToBitmap();
+                    }
                 } catch (Exception ex)
                 {
                     var name = ex.GetType().Name;

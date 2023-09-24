@@ -163,42 +163,50 @@ namespace AudioMixer
 
         public static Image CreateMuteKey()
         {
-            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
+            lock(muteImage) { 
+                Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            using (Graphics graph = Graphics.FromImage(clone))
-            {
-                graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+                using (Graphics graph = Graphics.FromImage(clone))
+                {
+                    graph.DrawImage(muteImage, new Rectangle(0, 0, 144, 144));
+                }
+
+                return clone;
             }
-
-            return clone;
         }
 
         public static Image CreateVolumeUpKey(float? volumeStep)
         {
-            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
-
-            using (Graphics graph = Graphics.FromImage(clone))
+            lock(volUpImage)
             {
-                var rect = new Rectangle(0, 0, 144, 144);
-                graph.DrawImage(volUpImage, rect);
-                graph.DrawImage(CreateTextImage(volumeStep != null ? $"+{volumeStep}" : ""), rect);
-            }
+                Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            return clone;
+                using (Graphics graph = Graphics.FromImage(clone))
+                {
+                    var rect = new Rectangle(0, 0, 144, 144);
+                    graph.DrawImage(volUpImage, rect);
+                    graph.DrawImage(CreateTextImage(volumeStep != null ? $"+{volumeStep}" : ""), rect);
+                }
+
+                return clone;
+            }
         }
 
         public static Image CreateVolumeDownKey(float? volumeStep)
         {
-            Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
-
-            using (Graphics graph = Graphics.FromImage(clone))
+            lock(volDnImage)
             {
-                var rect = new Rectangle(0, 0, 144, 144);
-                graph.DrawImage(volDnImage, rect);
-                graph.DrawImage(CreateTextImage(volumeStep != null ? $"-{volumeStep}" : ""), rect);
-            }
+                Bitmap clone = new Bitmap(144, 144, PixelFormat.Format32bppArgb);
 
-            return clone;
+                using (Graphics graph = Graphics.FromImage(clone))
+                {
+                    var rect = new Rectangle(0, 0, 144, 144);
+                    graph.DrawImage(volDnImage, rect);
+                    graph.DrawImage(CreateTextImage(volumeStep != null ? $"-{volumeStep}" : ""), rect);
+                }
+
+                return clone;
+            }
         }
 
         private static Image ScaleImage(Image image, int maxWidth, int maxHeight)
