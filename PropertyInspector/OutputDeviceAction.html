@@ -1,0 +1,66 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,minimal-ui,viewport-fit=cover">
+    <meta name=apple-mobile-web-app-capable content=yes>
+    <meta name=apple-mobile-web-app-status-bar-style content=black>
+    <title>AudioMixer Settings</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdpi.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@master/src/rangeTooltip.css">
+    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdtools.common.js"></script>
+    <script src="OutputDeviceAction.js"></script>
+</head>
+<body>
+    <div class="sdpi-wrapper">
+        <div class="sdpi-item" id="dvStaticOutputDevicesSelector">
+            <div class="sdpi-item-label">Device</div>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticOutputDevicesSelector" sdListTextProperty="displayName" sdListValueProperty="displayName" sdValueField="staticOutputDeviceName" oninput="setStaticDevice()"></select>
+            <button class="sdpi-item-value max20" onclick="setStaticDevice(true)">Clear</button>
+        </div>
+        <div class="sdpi-item">
+            <details class="message question">
+                <summary>Statically set this key to a specific device. (Optional)</summary>
+            </details>
+        </div>
+
+        <div class="sdpi-heading">Global Settings</div>
+
+        <div type="list" class="sdpi-item list" id="dvBlacklist">
+            <div class="sdpi-item-label">Blacklist</div>
+            <ol class="sdpi-item-value" id="blacklist" style="height:100px;"></ol>
+        </div>
+        <div class="sdpi-item" id="dvBlacklistedOutputDevicesSelector">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklistedOutputDevicesSelector" sdListTextProperty="displayName" sdListValueProperty="displayName" sdValueField="blacklistedOutputDeviceName" oninput=""></select>
+            <button class="max20" onclick="toggleBlacklistedDevice()">Add/Remove</button>
+        </div>
+
+        <div type="list" class="sdpi-item list" id="dvWhitelist">
+            <div class="sdpi-item-label">Whitelist</div>
+            <ol class="sdpi-item-value" id="whitelist" style="height:100px;"></ol>
+        </div>
+        <div class="sdpi-item" id="dvWhitelistedOutputDevicesSelector">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <select class="sdpi-item-value select sdProperty sdList" id="whitelistedOutputDevicesSelector" sdListTextProperty="displayName" sdListValueProperty="displayName" sdValueField="whitelistedOutputDeviceName" oninput=""></select>
+            <button class="max20" onclick="toggleWhitelistedDevice()">Add/Remove</button>
+        </div>
+
+        <div class="sdpi-item" id="dvRefresh" style="margin-top:10px">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <button class="sdpi-item-value" onclick="refreshDevices()">Refresh Devices</button>
+        </div>
+        <div class="sdpi-item" id="dvRefresh" style="margin-top:10px">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <button class="sdpi-item-value" onclick="resetGlobalSettings()">Reset Global Settings</button>
+        </div>
+
+        <hr />
+        <div class="sdpi-item">
+            <div class="sdpi-item-label">UUID</div>
+            <input class="sdpi-item-value" id="uuid" disabled>
+            <!-- <div class="sdHTML" />-->
+        </div>
+    </div>
+</body>
+</html>

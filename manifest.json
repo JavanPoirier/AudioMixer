@@ -2,7 +2,7 @@
   "Actions": [
     {
       "Icon": "Images/Placeholder",
-      "Name": "Application Placehoder",
+      "Name": "Application Placeholder",
       "States": [
         {
           "Image": "Images/Placeholder",
@@ -16,8 +16,23 @@
       "PropertyInspectorPath": "PropertyInspector/ApplicationAction.html"
     },
     {
+      "Icon": "Images/Wave",
+      "Name": "Output Device",
+      "States": [
+        {
+          "Image": "Images/Output",
+          "TitleAlignment": "center",
+          "FontSize": "8"
+        }
+      ],
+      "SupportedInMultiActions": true,
+      "Tooltip": "Output device selector.",
+      "UUID": "com.javanpoirier.audiomixer.outputdevice",
+      "PropertyInspectorPath": "PropertyInspector/OutputDeviceAction.html"
+    },
+    {
       "Icon": "Images/VolumeMute",
-      "Name": "Mute",
+      "Name": "Volume Mute",
       "States": [
         {
           "Image": "Images/VolumeMute",
@@ -42,7 +57,7 @@
       ],
       "SupportedInMultiActions": true,
       "Tooltip": "Volume down control button.",
-      "UUID": "com.javanpoirier.audiomixer.volumeDown",
+      "UUID": "com.javanpoirier.audiomixer.volumedown",
       "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     },
     {
@@ -57,7 +72,7 @@
       ],
       "SupportedInMultiActions": true,
       "Tooltip": "Volume up control button.",
-      "UUID": "com.javanpoirier.audiomixer.volumeUp",
+      "UUID": "com.javanpoirier.audiomixer.volumeup",
       "PropertyInspectorPath": "PropertyInspector/VolumeAction.html"
     }
   ],
@@ -66,7 +81,7 @@
   "Description": "A dynamic volume mixer with process icons that reflects the windows volume mixer. Control each independant process\\' volume as applications open and close. No need to statically assign a button to a single application, the application placeholder actions will update accordingly.",
   "Icon": "Images/Sliders",
   "URL": "https://github.com/JavanPoirier/AudioMixer",
-  "Version": "1.3.2",
+  "Version": "2.0.0",
   "CodePath": "com.javanpoirier.audiomixer",
   "Category": "Audio",
   "CategoryIcon": "Images/Sliders",

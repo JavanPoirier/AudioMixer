@@ -1,7 +1,7 @@
 ﻿document.addEventListener('websocketCreate', function () {
     console.log("Websocket created!");
 
-    refreshApplications();
+     refreshDevices()
 });
 
 function websocketOnMessage(evt) {
@@ -16,7 +16,7 @@ function websocketOnMessage(evt) {
         console.log('didReceiveSettings', payload)
 
         loadConfiguration(payload.settings);
-        populateStaticApp(payload.settings);
+        populateStaticDevice(payload.settings);
         populateBlacklist(payload.settings);
         populateWhitelist(payload.settings);
     }
@@ -32,85 +32,83 @@ function initPropertyInspector() {
     prepareDOMElements(document);
 }
 
-function populateStaticApp(payload) {
-    console.log('populateStaticApp', payload);
-    const { staticApplication } = payload;
+function populateStaticDevice(payload) {
+    console.log('populateStaticDevice', payload);
+    const { staticDevice } = payload;
 
-    if (!staticApplication?.processName) return;
-    document.getElementById("staticApplicationsSelector").value = staticApplication.processName;
+    if (!staticDevice?.processName) return;
+    document.getElementById("staticOutputDevicesSelector").value = staticDevice.displayName;
 }
 
 function populateBlacklist(payload) {
     console.log('populateBlacklist', payload)
-    const { blacklistedApplications } = payload;
+    const { blacklistedOutputDevices } = payload;
 
     document.getElementById("blacklist").innerHTML = '';
-    blacklistedApplications?.forEach(app => {
+    blacklistedOutputDevices?.forEach(device => {
         document.getElementById("blacklist").innerHTML += `
             <li style="display:flex;justify-content:center;align-items:center;padding:2.5px;">
-                <img width="15" height="15" src="data:image/png;base64,${app.processIcon}" style="margin-right:10px;"/>
-                ${app.processName}
+                 ${device.displayName}
             </li>`
     })
 }
 
 function populateWhitelist(payload) {
     console.log('populateWhitelist', payload)
-    const { whitelistedApplications } = payload;
+    const { whitelistedOutputDevices } = payload;
 
     document.getElementById("whitelist").innerHTML = '';
-    whitelistedApplications?.forEach(app => {
+    whitelistedOutputDevices?.forEach(device => {
         document.getElementById("whitelist").innerHTML += `
             <li style="display:flex;justify-content:center;align-items:center;padding:2.5px;">
-                <img width="15" height="15" src="data:image/png;base64,${app.processIcon}" style="margin-right:10px;"/>
-                ${app.processName}
+                 ${device.displayName}
             </li>`
     })
 }
 
-function setStaticApp(clear) {
-    var payload = { action: "application" };
-    var { value } = document.getElementById("staticApplicationsSelector");
+function setStaticDevice(clear) {
+    var payload = { action: "outputDevice" };
+    var { value } = document.getElementById("staticOutputDevicesSelector");
 
     payload.value = clear ? null : value;
-    payload.property_inspector = 'setStaticApp';
+    payload.property_inspector = 'setStaticDevice';
     sendPayloadToPlugin(payload);
 }
 
-function toggleBlacklistedApp() {
-    var payload = { action: "application" };
-    var { value } = document.getElementById("blacklistedApplicationsSelector");
+function toggleBlacklistedDevice() {
+    var payload = { action: "outputDevice" };
+    var { value } = document.getElementById("blacklistedOutputDevicesSelector");
 
     payload.value = value;
-    payload.property_inspector = 'toggleBlacklistedApp';
+    payload.property_inspector = 'toggleBlacklistedDevice';
     sendPayloadToPlugin(payload);
 }
 
-function toggleWhitelistedApp() {
-    var payload = { action: "application" };
-    var { value } = document.getElementById("whitelistedApplicationsSelector");
+function toggleWhitelistedDevice() {
+    var payload = { action: "outputDevice" };
+    var { value } = document.getElementById("whitelistedOutputDevicesSelector");
 
     payload.value = value;
-    payload.property_inspector = 'toggleWhitelistedApp';
+    payload.property_inspector = 'toggleWhitelistedDevice';
     sendPayloadToPlugin(payload);
 }
 
-function refreshApplications() {
-    var payload = { action: "application" };
+function refreshDevices() {
+    var payload = { action: "outputDevice" };
 
-    payload.property_inspector = 'refreshApplications';
+    payload.property_inspector = 'refreshDevices';
     sendPayloadToPlugin(payload);
 }
 
 function resetGlobalSettings() {
-    var payload = { action: "application" };
+    var payload = { action: "outputDevice" };
 
     payload.property_inspector = 'resetGlobalSettings';
     sendPayloadToPlugin(payload);
 }
 
 function resetSettings() {
-    var payload = { action: "application" };
+    var payload = { action: "outputDevice" };
 
     payload.property_inspector = 'resetSettings';
     sendPayloadToPlugin(payload);

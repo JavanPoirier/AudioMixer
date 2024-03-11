@@ -31,8 +31,8 @@ auto-magically added to your blacklist.
 
 ## Known Limitations
 ### Only supports a single page
-At the moment for V1, processes do not move on to consequative pages once a page is full. This behaviour is something I would like to add, however it would
-be a user setting as this can also be seen as unintended behaviour.
+At the moment for V1, processes do not move on to consecutive pages once a page is full. This behavior is something I would like to add, however it would
+be a user setting as this can also be seen as unintended behavior.
 
 ### You can only have one of the same applications as static
 You can have multiple static applications, just not the same application. This is a limitation of how the code was written. 
@@ -50,9 +50,9 @@ This occurs due to each action needing to check the state of others, along with 
 This should not occur frequently and lasts for only a second.
 
 
-**Application's not showing/disapearing when launched/closed.** <br/>
+**Application's not showing/disappearing when launched/closed.** <br/>
 
-While testing I noticed this occuring with some apps, notably Spotify. Some apps will only notify the OS
+While testing I noticed this occurring with some apps, notably Spotify. Some apps will only notify the OS
 of their audio intentions once they actually start playing, not on open. So keep this in mind. You can see this for yourself, if you open up the Windows Volume Mixer.
 A possible solution to this would require quite the re-write, of watching applications rather than just audio sessions.
 
@@ -70,15 +70,15 @@ Either the audio session actually does not have an associated icon, or more like
 ## TODO
 - Changing default output device.
 - Add Application Whitelist (Application priority)
-- Alighn applications left to right. (**Note to Self**: Currently not occuring as the application actions array index is not reflective of the key position)
+- Align applications left to right. (**Note to Self**: Currently not occurring as the application actions array index is not reflective of the key position)
 
 ---
 
 ## Getting Started
 
 To use:
-1. Right click the project and choose "Manage Nuget Packages"
-1. Choose the restore option in the Nuget screen (or just install the latest StreamDeck-Tools from Nuget)
+1. Right click the project and choose "Manage NuGet Packages"
+1. Choose the restore option in the NuGet screen (or just install the latest StreamDeck-Tools from NuGet)
 1. Ensure the DistributionTool.exe exists where specified in the `install.bat`
 1. Update the manifest.json file with the correct details about your plugin
 1. Modify PluginAction.cs as needed (it holds the logic for your plugin)
@@ -95,10 +95,11 @@ Resources:
 
 ## Installing locally
 
+1. Ensure you have the distribution tool. https://docs.elgato.com/sdk/plugins/packaging
 1. Open an admin terminal.
-2. Navigate to repo directory.
-3. Ensure a build is created for your target (DEBUG|RELEASE)
-4. Run "./install.bat DEBUG com.javanpoirier.audiomixer" 
+1. Navigate to repo directory.
+1. Ensure a build is created for your target (DEBUG|RELEASE)
+1. Run "./install.bat DEBUG com.javanpoirier.audiomixer" 
 
 ## Development
 
@@ -108,9 +109,18 @@ There are a few  ways to log...
 	1. BarRaider Logger - Logger.Instance.LogMessage() will log to a file within the plugin install directory `AppData\Roaming\Elgato\StreamDeck\Plugins\com.javanpoirier.audiomixer.sdPlugin\pluginLog.log`
 	1. Sentry - Refer to Sentry documentation.
 
-### Sumission
-1. Change AssemblyVersion in ./AssemblyInfo.cs
-1. Change manafest.json verison
-1. Change Sentry verison
+### Debugging
+See: https://docs.elgato.com/sdk/plugins/getting-started#5.-debugging
 
-<a href="https://www.flaticon.com/free-icons/headset" title="headset icons">Headset icons created by HideMaru - Flaticon</a>
+1. Set the html_remote_debugging_enabled flag. On Windows, add a DWORD html_remote_debugging_enabled with value 1 in the registry @HKEY_CURRENT_USER\Software\Elgato Systems GmbH\StreamDeck.
+1. Once set and restarted, the plugins are available for debugging from the browser at http://localhost:23654/		
+
+NOTE: The PI needs to be open for the specific action to be debugged.
+
+### Submission
+1. Change AssemblyVersion in ./AssemblyInfo.cs
+1. Change manafest.json version
+1. Change Sentry version
+
+<a href="https://thenounproject.com/icon/aux-1952032/">“Aux” icon is by Kemesh Maharjan from Noun Project.</a>
+Other icons from: https://uxwing.com/

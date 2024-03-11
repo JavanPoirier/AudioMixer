@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Diagnostics;
-using NAudio.CoreAudioApi;
 using System.Drawing;
-using NAudio.CoreAudioApi.Interfaces;
 using BarRaider.SdTools;
 using Newtonsoft.Json;
+using AudioMixer.Actions;
+using CoreAudio;
+using CoreAudio.Interfaces;
 using Sentry;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
+using System.Collections.Specialized;
+using System.Linq;
 
 namespace AudioMixer
 {
@@ -15,7 +18,6 @@ namespace AudioMixer
     {
         public readonly string processName;
         public string processIcon { get; private set; }
-
         public AudioSessionSetting(AudioSession audioSession)
         {
             lock(audioSession)
@@ -33,7 +35,7 @@ namespace AudioMixer
         }
     }
 
-    public class AudioSession : IAudioSessionEventsHandler, IDisposable
+    public class AudioSession : IDisposable
     {
         public class VolumeChangedEventArgs
         {
@@ -47,22 +49,43 @@ namespace AudioMixer
             }
         }
 
-        private PluginController pluginController;
-        private MMDevice device;
-
         public readonly int processId;
         public readonly string processName;
-        public readonly AudioSessionControl session;
+        public readonly AudioSessionControl2 sessionControl;
         public Bitmap processIcon { get; private set; } = new Bitmap(Utils.CreateDefaultAppKey());
 
-        public event EventHandler SessionDisconnnected;
-        public event EventHandler<VolumeChangedEventArgs> VolumeChanged;
+        public event EventHandler OnSessionDisconnected;
+        public event EventHandler<VolumeChangedEventArgs> OnVolumeChanged;
 
-        public AudioSession(PluginController pluginController, MMDevice device, AudioSessionControl session)
+        public float MasterVolume
         {
-            this.pluginController = pluginController;
-            this.device = device;
-            this.session = session;
+            get
+            {
+                return sessionControl.SimpleAudioVolume.MasterVolume;
+            }
+            set
+            {
+                sessionControl.SimpleAudioVolume.MasterVolume = value;
+                OnVolumeChanged?.Invoke(this, new VolumeChangedEventArgs(value, Mute));
+            }
+        }
+
+        public bool Mute
+        {
+            get
+            {
+                return sessionControl.SimpleAudioVolume.Mute;
+            }
+            set
+            {
+                sessionControl.SimpleAudioVolume.Mute = value;
+                OnVolumeChanged?.Invoke(this, new VolumeChangedEventArgs(MasterVolume, value));
+            }
+        }
+
+        public AudioSession(AudioSessionControl2 sessionControl)
+        {
+            this.sessionControl = sessionControl;
 
             try {
                 SentrySdk.AddBreadcrumb(
@@ -70,20 +93,20 @@ namespace AudioMixer
                     category: "AudioSession",
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
-                        { "sessionDisplayName", session.DisplayName },
-                        { "sessionIconPath", session.IconPath },
+                        { "sessionDisplayName", sessionControl.DisplayName },
+                        { "sessionIconPath", sessionControl.IconPath },
                         { "processName", processName },
                     }
                 );
 
-                Process process = Process.GetProcessById((int)session.GetProcessID);
+                Process process = Process.GetProcessById((int)sessionControl.ProcessID);
 
                 processId = process.Id;
 
-                // NOTE: Don't use MainWindowTitle as some applciations dynamically update it. Ex: Spotify changes it to the playing song.
+                // NOTE: Don't use MainWindowTitle as some applications dynamically update it. Ex: Spotify changes it to the playing song.
                 processName = process.ProcessName;
 
-                // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName for SO resolution.
+                // NOTE: The following causing Win32Expections with some processes. See Utils.GetProcessName.
                 // processIcon = Icon.ExtractAssociatedIcon(process.MainModule.FileName).ToBitmap();
 
                 try
@@ -95,8 +118,8 @@ namespace AudioMixer
                         category: "AudioSession",
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
-                            { "sessionDisplayName", session.DisplayName },
-                            { "sessionIconPath", session.IconPath },
+                            { "sessionDisplayName", sessionControl.DisplayName },
+                            { "sessionIconPath", sessionControl.IconPath },
                             { "processName", processName },
                             { "processFilePath", processFilePath }
                         }
@@ -108,9 +131,7 @@ namespace AudioMixer
                     }
                 } catch (Exception ex)
                 {
-                    var name = ex.GetType().Name;
-                    Logger.Instance.LogMessage(TracingLevel.ERROR, name);
-                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
                     SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "AudioSession"; });
                 }
 
@@ -118,102 +139,70 @@ namespace AudioMixer
                 //processIcon = Icon.ExtractAssociatedIcon(session.IconPath).ToBitmap(); "%windir%\\system32\\mmres.dll,-3030"
                 //Environment.ExpandEnvironmentVariables("%windir%\\system32\\mmres.dll");
 
+                var data = new Dictionary<string, string> {
+                        { "sessionDisplayName", sessionControl.DisplayName },
+                        { "sessionIconPath", sessionControl.IconPath },
+                        { "sessionIsSystemSoundsSession", sessionControl.IsSystemSoundsSession.ToString() },
+                        { "processName", processName }
+                };
+
                 if (processIcon == null)
                 {
                     SentrySdk.AddBreadcrumb(
                         message: "Unable to find process icon",
                         category: "AudioSession",
                         level: BreadcrumbLevel.Info,
-                        data: new Dictionary<string, string> {
-                            { "sessionDisplayName", session.DisplayName },
-                            { "sessionIconPath", session.IconPath },
-                            { "processName", processName }
-                        }
+                        data: data
                     );
 
                     // TODO: Only in debug?
                     var sentryEvent = new SentryEvent();
                     sentryEvent.Message = "Unable to find process icon";
-                    sentryEvent.SetExtras(new Dictionary<string, object> {
-                            { "sessionDisplayName", session.DisplayName },
-                            { "sessionIconPath", session.IconPath },
-                            { "sessionIsSystemSoundsSession", session.IsSystemSoundsSession },
-                            { "processName", processName }
-                        });
+                    sentryEvent.SetExtras(new Dictionary<string, object>(data.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)));
                     SentrySdk.CaptureEvent(sentryEvent);
 
                     processIcon = new Bitmap(Utils.CreateDefaultAppKey());
                 }
 
-                session.RegisterEventClient(this);
+                sessionControl.OnSimpleVolumeChanged += HandleVolumeChanged;
+                sessionControl.OnStateChanged += HandleStateChanged;
+                sessionControl.OnSessionDisconnected += HandleSessionDisconnected;
 
-                Logger.Instance.LogMessage(TracingLevel.INFO, JObject.FromObject(new Dictionary<string, string> {
-                        { "sessionDisplayName", session.DisplayName },
-                        { "sessionIconPath", session.IconPath },
-                        { "sessionIsSystemSoundsSession", session.IsSystemSoundsSession.ToString() },
-                        { "processName", processName }
-                    }).ToString());
-
+                Logger.Instance.LogMessage(TracingLevel.INFO, JObject.FromObject(data).ToString());
                 SentrySdk.AddBreadcrumb(
                        message: "Created session",
                        category: "AudioSession",
                        level: BreadcrumbLevel.Info,
-                       data: new Dictionary<string, string> {
-                            { "sessionDisplayName", session.DisplayName },
-                            { "sessionIconPath", session.IconPath },
-                            { "processName", processName }
-                       }
+                       data: data
                    );
             } catch (Exception ex)
             {
-                var name = ex.GetType().Name;
-                Logger.Instance.LogMessage(TracingLevel.ERROR, name);
-                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
                 SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "AudioSession"; });
             }
         }
 
         public void Dispose()
         {
-            var applicationAction = this.pluginController.applicationActions.Find(actions => actions.processName == this.processName);
-            if (applicationAction != null) applicationAction.ReleaseAudioSession();
-
-            this.pluginController.audioManager.audioSessions.Remove(this);
-            pluginController.UpdateActions();
+            if (sessionControl == null) return;
+            sessionControl.OnSimpleVolumeChanged -= HandleVolumeChanged;
+            sessionControl.OnStateChanged -= HandleStateChanged;
+            sessionControl.OnSessionDisconnected -= HandleSessionDisconnected;
         }
 
-        public void OnVolumeChanged(float volume, bool isMuted)
+        private void HandleVolumeChanged(object sender, float newVolume, bool newMute)
         {
-            if (VolumeChanged != null)
-            {
-                var e = new VolumeChangedEventArgs(volume, isMuted);
-                VolumeChanged(this, e);
-            }
-        }
-        
-        public void OnDisplayNameChanged(string displayName)
-        {
+            if (OnVolumeChanged != null) OnVolumeChanged(this, new VolumeChangedEventArgs(newVolume, newMute));   
         }
 
-        public void OnIconPathChanged(string iconPath)
+        public void HandleStateChanged(object sender, AudioSessionState newState)
         {
-        }
-
-        public void OnChannelVolumeChanged(uint channelCount, IntPtr newVolumes, uint channelIndex)
-        {
-        }
-
-        public void OnGroupingParamChanged(ref Guid groupingId)
-        {
-        }
-
-        public void OnStateChanged(AudioSessionState e)
-        {
-            switch (e)
+            switch (newState)
             {
                 case AudioSessionState.AudioSessionStateExpired:
                     // Occurs when application is closed.
-                    this.Dispose();
+                    /*this.Dispose();*/
+                    AudioManager.DeleteAudioSession(this);
                     break;
                 case AudioSessionState.AudioSessionStateInactive:
                     // Occurs when application has released audio.
@@ -224,10 +213,9 @@ namespace AudioMixer
             }
         }
 
-        public void OnSessionDisconnected(AudioSessionDisconnectReason disconnectReason)
+        public void HandleSessionDisconnected(object sender, AudioSessionDisconnectReason disconnectReason)
         {
-            if (SessionDisconnnected != null)
-                SessionDisconnnected(this, null);
+            if (OnSessionDisconnected != null) OnSessionDisconnected(this, null);
         }
     }
 }

@@ -1,49 +1,21 @@
-﻿using BarRaider.SdTools;
+﻿using AudioMixer.Actions;
+using BarRaider.SdTools;
 using Newtonsoft.Json.Linq;
+using NLog;
 using Sentry;
 using streamdeck_client_csharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace AudioMixer
 {
     public class PluginController : IDisposable
     {
-        public string deviceId;
-        public AudioManager audioManager;
-        public List<ApplicationAction> applicationActions = new List<ApplicationAction>();
-
-        private ApplicationAction selectedAction;
-        private GlobalSettings globalSettings;
         private static readonly Lazy<PluginController> instance = new Lazy<PluginController>(() => new PluginController());
-        private ConcurrentQueue<ApplicationAction> actionQueue = new ConcurrentQueue<ApplicationAction>();
-        private readonly object updateActionsLock = new object();
-
-        public ApplicationAction SelectedAction
-        {
-            get { return selectedAction; }
-            set
-            {
-                if (value != null && value == selectedAction)
-                {
-                    selectedAction.SetSelected(false);
-                    selectedAction = null;
-                }
-                else
-                {
-                    // Reset previous selected action
-                    if (selectedAction != null) selectedAction.SetSelected(false);
-
-                    selectedAction = value;
-                    if (selectedAction != null) selectedAction.SetSelected(true);
-                }
-
-                SetActionControls();
-            }
-        }
 
         public static PluginController Instance
         {
@@ -53,112 +25,76 @@ namespace AudioMixer
             }
         }
 
+        public GlobalSettings globalSettings;
+        public List<BaseAction<GlobalSettings>> actions = new List<BaseAction<GlobalSettings>>();
+
+        private bool initialized = false;
+
         private PluginController()
         {
-            Logger.Instance.LogMessage(TracingLevel.DEBUG, $"PluginController: {GetHashCode()}");
-            audioManager = new AudioManager(this);
+            BarRaider.SdTools.Logger.Instance.LogMessage(TracingLevel.DEBUG, $"PluginController: {GetHashCode()}");
 
-            GlobalSettingsManager.Instance.OnReceivedGlobalSettings += OnReceivedGlobalSettings;
+            // TODO: Not being called... from here or from connection.
+            GlobalSettingsManager.Instance.OnReceivedGlobalSettings += ReceivedGlobalSettings;
             GlobalSettingsManager.Instance.RequestGlobalSettings();
+             
+            LogManager.Configuration.AddSentry(o =>
+                {
+                    o.Layout = "${message}";
+                    o.BreadcrumbLayout = "${logger}: ${message}";
+                    o.MinimumBreadcrumbLevel = LogLevel.Debug;
+                    o.MinimumEventLevel = LogLevel.Error;
+                    o.AddTag("logger", "${logger}");
+                });
+
+            // If not admin, restart as admin
+            var isAdmin = Utils.IsAdministrator();
+            if (!isAdmin)
+            {
+                Utils.ExecuteAsAdmin(Environment.GetCommandLineArgs()[0]);
+                Thread.Sleep(3000);
+                Environment.Exit(-1);
+            }
+
+            AudioManager.Init();
         }
 
         public void Dispose()
         {
-            GlobalSettingsManager.Instance.OnReceivedGlobalSettings -= OnReceivedGlobalSettings;
+            GlobalSettingsManager.Instance.OnReceivedGlobalSettings -= ReceivedGlobalSettings;
         }
 
-        public void AddAction(ApplicationAction action)
+        public List<ApplicationAction> GetApplicationActions()
         {
-            applicationActions.Add(action);
-            UpdateActions();
+            return actions.OfType<ApplicationAction>().Where(action => action.type == ActionType.APPLICATION).ToList();
         }
 
-        public void RemoveAction(ApplicationAction action)
+        public List<OutputDeviceAction> GetOutputDeviceActions()
         {
-            applicationActions.Remove(action);
-
-            if (SelectedAction == action)
-            {
-                SelectedAction = null;
-            }
-
-            UpdateActions();
+            // Filter actions where the action is of type OutputDeviceAction and the action type is OUTPUTDEVICE
+            return actions.OfType<OutputDeviceAction>().Where(action => action.type == ActionType.OUTPUTDEVICE).ToList();
         }
 
-        public void AddActionToQueue(ApplicationAction action)
-        {
-            actionQueue.Enqueue(action);
-
-            ApplicationAction enqueuedAction;
-            while (actionQueue.TryDequeue(out enqueuedAction)) enqueuedAction.SetAudioSession();
-        }
-
-        public void UpdateActions()
-        {
-            lock (updateActionsLock)
-            {
-                if (globalSettings != null && globalSettings.InlineControlsEnabled) SelectedAction = null;
-
-                actionQueue = new ConcurrentQueue<ApplicationAction>(applicationActions);
-
-                // No need to reset icon as when the action is set in queue it will be reset if need be.
-                applicationActions.ToList().ForEach(action => action.ReleaseAudioSession(false));
-
-                ApplicationAction enqueuedAction;
-                while (actionQueue.TryDequeue(out enqueuedAction))
-                {
-                    enqueuedAction.SetAudioSession();
-                    try
-                    {
-                        enqueuedAction.RefreshApplicationSelectors();
-                    }
-                    catch { }
-                }
-            }
-        }
-
-        private async void SetActionControls()
-        {
-            if (selectedAction != null && globalSettings.InlineControlsEnabled)
-            {
-                List<ApplicationAction> controls = applicationActions.ToList().FindAll(action => action != this.selectedAction);
-
-                if (controls.Count >= 3)
-                {
-                    await controls[0].SetControlType(Utils.ControlType.Mute);
-                    await controls[1].SetControlType(Utils.ControlType.VolumeDown);
-                    await controls[2].SetControlType(Utils.ControlType.VolumeUp);
-                }
-                else
-                {
-                    string warn = "Not enough plugin actions available to place controls.";
-                    Logger.Instance.LogMessage(TracingLevel.WARN, warn);
-                    SentrySdk.AddBreadcrumb(
-                       message: "warn",
-                       category: "PluginController",
-                       level: BreadcrumbLevel.Warning
-                     );
-                }
-            }
-            else
-            {
-                // Reset all application actions.
-                applicationActions.ToList().ForEach(async pluginAction => await pluginAction.SetControlType(Utils.ControlType.Application));
-                //UpdateActions();
-            }
-        }
-
-        private void OnReceivedGlobalSettings(object sender, ReceivedGlobalSettingsPayload payload)
+        private void ReceivedGlobalSettings(object sender, ReceivedGlobalSettingsPayload payload)
         {
             if (payload?.Settings != null && payload.Settings.Count > 0)
             {
                 globalSettings = payload.Settings.ToObject<GlobalSettings>();
-            }
-        }
 
-        static public async Task ResetGlobalSettings()
-        {
-            await GlobalSettingsManager.Instance.SetGlobalSettings(JObject.FromObject(GlobalSettings.CreateDefaultSettings()));
+                if (!initialized)
+                {
+                    initialized = true;
+                    SentrySdk.ConfigureScope(scope =>
+                    {
+                        var user = new User();
+                        user.Id = globalSettings.UUID;
+                        scope.User = user;
+                    });
+
+                    var sentryEvent = new SentryEvent();
+                    SentrySdk.CaptureMessage("Initialized", scope => scope.TransactionName = "PluginController", SentryLevel.Info);
+                }   
+            }
         }
     }
 }

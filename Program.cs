@@ -1,10 +1,10 @@
 ﻿using BarRaider.SdTools;
 using NLog;
+using NLog.Config;
 using Sentry;
 using System.Threading;
 using System;
 using System.Diagnostics;
-using NLog.Config;
 using System.Windows.Forms;
 
 namespace AudioMixer
@@ -17,10 +17,10 @@ namespace AudioMixer
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
 
             GlobalDiagnosticsContext.Set("Application", "Audio Mixer");
-            GlobalDiagnosticsContext.Set("Version", "1.3.2");
+            GlobalDiagnosticsContext.Set("Version", "2.0.0");
 
             // Uncomment this line of code to allow for debugging
-            // while (!System.Diagnostics.Debugger.IsAttached) { System.Threading.Thread.Sleep(100); }
+            while (!System.Diagnostics.Debugger.IsAttached) { System.Threading.Thread.Sleep(100); }
 
 #if DEBUG
             var isDebug = true;
@@ -32,7 +32,7 @@ namespace AudioMixer
             {
                 o.Dsn = "https://4a22d40cccbc4268abe582e0e30e6ae3@o1232787.ingest.sentry.io/6381003";
                 o.AutoSessionTracking = true;
-                o.Release = "audio-mixer@1.3.2";
+                o.Release = "audio-mixer@2.0.0";
                 o.Environment = isDebug ? "development" : "production";
                 o.MaxBreadcrumbs = 50;
                 o.SampleRate = isDebug ? 1f : 0.1f;
@@ -57,14 +57,19 @@ namespace AudioMixer
         static void Application_ThreadException(object sender, ThreadExceptionEventArgs e)
         {
             // Log the exception, display it, etc
-            Debug.WriteLine(e.Exception.Message);
-            SentrySdk.CaptureMessage(e.ToString(), scope => scope.TransactionName = "ThreadException");
+            Debug.WriteLine(e.Exception.ToString());
+            SentrySdk.CaptureException(e.Exception, scope => scope.TransactionName = "ThreadException");
         }
-        static async void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+
+        static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
-            // Log the exception, display it, etc
-            Debug.WriteLine((e.ExceptionObject as Exception).Message);
-            SentrySdk.CaptureMessage(e.ToString(), scope => scope.TransactionName = "UnhandledException");
+            // Cast the ExceptionObject to an Exception
+            /*if (e.ExceptionObject is Exception ex)
+            {*/
+                // Log the exception, display it, etc
+                Debug.WriteLine(e.ExceptionObject.ToString());
+                SentrySdk.CaptureException((Exception)e.ExceptionObject, scope => scope.TransactionName = "UnhandledException");
+            //}
 
             // For safety, clear all settings.
             // await PluginController.ResetGlobalSettings();

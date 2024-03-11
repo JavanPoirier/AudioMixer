@@ -1,236 +1,183 @@
 ﻿using BarRaider.SdTools;
-using NAudio.CoreAudioApi;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Drawing;
 using System.Threading.Tasks;
-using System.Timers;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
 using MoreLinq.Extensions;
 using Sentry;
+using AudioMixer.Actions;
+using System.Timers;
+using static AudioMixer.ApplicationAction;
 using System.Diagnostics;
+using AudioSwitcher.AudioApi.Session;
+using System.Runtime;
 
 namespace AudioMixer
 {
     [PluginActionId("com.javanpoirier.audiomixer.application")]
-    public class ApplicationAction : PluginBase
+    public class ApplicationAction : BaseAction<ApplicationSettings>
     {
-        public class PluginSettings
+        public class ApplicationSettings : GlobalSettings
         {
-            public const string VOLUME_STEP = "10";
-            public const double INLINE_CONTROLS_HOLD_DURATION = 200;
-            public const int INLINE_CONTROLS_TIMEOUT = 0;
-
-            public static PluginSettings CreateDefaultSettings()
+            public ApplicationSettings() : base()
             {
-                PluginSettings instance = new PluginSettings
-                {
-                    DeviceId = null,
-                    VolumeStep = VOLUME_STEP,
-                    StaticApplication = null,
-                    StaticApplicationSelector = new List<AudioSessionSetting>(),
-                    BlacklistApplicationName = null,
-                    BlacklistedApplications = new List<AudioSessionSetting>(),
-                    BlacklistApplicationSelector = new List<AudioSessionSetting>(),
-                    WhitelistApplicationName = null,
-                    WhitelistedApplications = new List<AudioSessionSetting>(),
-                    WhitelistApplicationSelector = new List<AudioSessionSetting>(),
-                    InlineControlsEnabled = true,
-                    InlineControlsHoldDuration = INLINE_CONTROLS_HOLD_DURATION,
-                    InlineControlsTimeout = INLINE_CONTROLS_TIMEOUT,
-                };
-                return instance;
+                StaticApplication = null;
+                StaticApplicationName = null;
+                BlacklistedApplicationName = null;
+                WhitelistedApplicationName = null;
             }
 
-            [JsonProperty(PropertyName = "deviceId")]
-            public string DeviceId { get; set; }
-
-            [JsonProperty(PropertyName = "volumeStep")]
-            public string VolumeStep { get; set; }
-
-            [JsonProperty(PropertyName = "staticApplicationName")]
-            public string StaticApplicationName { get; set; }
+            public override GlobalSettings CreateInstance(string UUID)
+            {
+                return new ApplicationSettings { UUID = UUID };
+            }
 
             [JsonProperty(PropertyName = "staticApplication")]
             public AudioSessionSetting StaticApplication { get; set; }
 
-            [JsonProperty(PropertyName = "staticApplicationSelector")]
-            public List<AudioSessionSetting> StaticApplicationSelector { get; set; }
+            [JsonProperty(PropertyName = "staticApplicationName")]
+            public string StaticApplicationName { get; set; }
 
-            [JsonProperty(PropertyName = "blacklistApplicationName")]
-            public string BlacklistApplicationName { get; set; }
-
-            [JsonProperty(PropertyName = "blacklistedApplications")]
-            public List<AudioSessionSetting> BlacklistedApplications { get; set; }
-
-            [JsonProperty(PropertyName = "blacklistApplicationSelector")]
-            public List<AudioSessionSetting> BlacklistApplicationSelector { get; set; }
+            [JsonProperty(PropertyName = "blacklistedApplicationName")]
+            public string BlacklistedApplicationName { get; set; }
 
             [JsonProperty(PropertyName = "whitelistedApplicationName")]
-            public string WhitelistApplicationName { get; set; }
-
-            [JsonProperty(PropertyName = "whitelistedApplications")]
-            public List<AudioSessionSetting> WhitelistedApplications { get; set; }
-
-            [JsonProperty(PropertyName = "whitelistApplicationSelector")]
-            public List<AudioSessionSetting> WhitelistApplicationSelector { get; set; }
-
-            [JsonProperty(PropertyName = "inlineControlsEnabled")]
-            public bool InlineControlsEnabled { get; set; }
-
-            [JsonProperty(PropertyName = "inlineControlsHoldDuation")]
-            public double InlineControlsHoldDuration { get; set; }
-
-            [JsonProperty(PropertyName = "inlineControlsTimeout")]
-            public int InlineControlsTimeout { get; set; }
+            public string WhitelistedApplicationName { get; set; }
         }
 
-        private PluginController pluginController = PluginController.Instance;
         private Utils.ControlType controlType = Utils.ControlType.Application;
-        private Stopwatch stopWatch = new Stopwatch();
-        private System.Timers.Timer timer = new System.Timers.Timer(200);
-        private GlobalSettings globalSettings;
-
         private Image iconImage;
         private Image volumeImage;
-        private float volume;
-        private bool muted;
-
-        public readonly string coords;
         public string processName;
-        public PluginSettings settings;
 
-        public List<AudioSession> AudioSessions { get => pluginController.audioManager.audioSessions.ToList().FindAll(session => session.processName == processName); }
-
-        public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload)
+        public IEnumerable<AudioSession> ActionAudioSessions
         {
-            if (pluginController.deviceId == null)
+            get => AudioManager.audioSessions.Where(session => session.processName == processName);
+        }
+
+        public float MasterVolume {
+            get => ActionAudioSessions.Max(session => session.MasterVolume);
+            private set => ActionAudioSessions.ForEach(session => session.MasterVolume = value);
+        }
+        public bool Mute
+        {
+            get => ActionAudioSessions.Any(session => session.Mute == true);
+            private set => ActionAudioSessions.ForEach(session => session.Mute = value);
+        }
+     
+
+        public ApplicationAction(SDConnection connection, InitialPayload payload) : base(connection, payload, ActionType.APPLICATION, "Application") { }
+
+        protected override void InitActionCore() {  }
+
+        protected override void SetKey()
+        {
+            // If not currently in the actions list, add it.
+            if (!ApplicationActions.applicationActions.Any(action => action == this))
             {
-                pluginController.deviceId = Connection.DeviceId;
-
-                SentrySdk.ConfigureScope(scope =>
-                {
-                    scope.User = new User
-                    {
-                        Id = pluginController.deviceId
-                    };
-                });
-
-                SentrySdk.CaptureMessage("Initialized", scope => scope.TransactionName = "ApplicationAction", SentryLevel.Info);
+                ApplicationActions.Add(this);
             }
+        }
 
-            coords = $"{payload.Coordinates.Column} {payload.Coordinates.Row}";
-            Logger.Instance.LogMessage(TracingLevel.INFO, $"Initializing key at: {coords}");
-            Connection.LogSDMessage($"Initializing key at: {coords}");
-            SentrySdk.AddBreadcrumb(
-               message: "Initializiing Application key",
-               category: "ApplicationAction",
-               level: BreadcrumbLevel.Info
-             );
-
-            if (payload.Settings == null || payload.Settings.Count == 0)
+        protected override void HandleKeyHeld(object timerSender, ElapsedEventArgs elapsedEvent)
+        {
+            if (controlType == Utils.ControlType.VolumeUp || controlType == Utils.ControlType.VolumeDown)
             {
-                settings = PluginSettings.CreateDefaultSettings();
-                SaveSettings();
+                SetSelectedActionVolume();
+            }
+        }
+
+        protected override void HandleKeyReleased(object sender, KeyReleasedEventArgs e)
+        {
+            if (controlType == Utils.ControlType.Application)
+            {
+                if (processName == null) return;
+
+                if (stopWatch.ElapsedMilliseconds >= 2000) ToggleBlacklistApp(processName);
+                else if (ActionAudioSessions.Count() > 0) ApplicationActions.SelectedAction = this;
             }
             else
             {
-                try
-                {
-                    // TODO: Create & assign a default and merge to allow for compatability of new features.
-                    settings = payload.Settings.ToObject<PluginSettings>();
-                } catch (Exception ex)
-                {
-                    Logger.Instance.LogMessage(TracingLevel.ERROR, $"Assigning settings from the constructor payload failed. Resetting...");
-                    Connection.LogSDMessage($"Assigning settings from the constructor payload failed. Resetting...");
-                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
-
-                    ResetSettings();
-                }
+                SetSelectedActionVolume();
             }
-
-            Connection.GetGlobalSettingsAsync();
-
-            Connection.OnSendToPlugin += OnSendToPlugin;
-            timer.Elapsed += KeyHoldEvent;
         }
 
         // User has deleted the action from the device.
         public override void Dispose()
         {
-            Logger.Instance.LogMessage(TracingLevel.INFO, $"Destructor called");
-            Connection.OnSendToPlugin -= OnSendToPlugin;
-            if (timer != null) timer.Dispose();
+            base.Dispose();
 
             // Required before releasing...
             ToggleStaticApp(null);
 
-            ReleaseAudioSession();
-            pluginController.RemoveAction(this);
+            ApplicationActions.Remove(this);
         }
 
         // NOTE:
         // This does not appear to work as expected when switching pages on the Stream Deck.
-        //  Connection.SetDefaultImageAsync();
+        // Connection.SetDefaultImageAsync();
         //
-        // However this works...
-        //  Connection.SetImageAsync((string)null, 0, true);
-        public void SetAudioSession()
+        // However this does...
+        // Connection.SetImageAsync((string)null, 0, true);
+        public void SetAudioSession(bool releaseSessions = true)
         {
             SentrySdk.AddBreadcrumb(
                 message: "Setting audio session",
-                category: "ApplicationAction",
+                category: actionName,
                 level: BreadcrumbLevel.Info
             );
 
-            // Previous audio session cleanup. Do not update icon to prevent flashing if process remains the same.
-            ReleaseAudioSession(false);
+            // Previous audio session cleanup.
+            if (releaseSessions) ReleaseAudioSessions();
 
             // If audio session is static...
-            if (settings.StaticApplication != null)
+            if (actionSettings.StaticApplication != null)
             {
-                // Before self assignin, ensure no other application action has the session.
-                var applicationAction = pluginController.applicationActions.Find(action =>
-                {
-                    if (action.AudioSessions.Count > 0) return action.AudioSessions[0].processName == settings.StaticApplication.processName;
-                    return false;
-                });
+                // Before self assigning, find the application action that has the session.
+                var existingApplicationAction = ApplicationActions.applicationActions.Find(action =>
+                   action != this && action.processName == actionSettings.StaticApplication.processName
+                );
 
-                // Self assign before re-assigning the last action.
-                this.processName = settings.StaticApplication.processName;
-
-                // If an application action DOES have the session we want, and it is not this action...
-                if (applicationAction != null && applicationAction != this)
+                // In case of duplicates, clear this one.
+                var existingStaticApplication = ApplicationActions.applicationActions.Find(action => action.actionSettings.StaticApplication?.processName == actionSettings.StaticApplication.processName && action != this);
+                if (existingStaticApplication != null)
                 {
-                    // Reset and re-assign a new session to the previous action, if any.
-                    applicationAction.ReleaseAudioSession();
-                    pluginController.AddActionToQueue(applicationAction);
+                    ToggleStaticApp(null);
+                    return;
                 }
 
+                // Self assign before re-assigning the last action.
+                this.processName = actionSettings.StaticApplication.processName;
+
+                // If an application action that is not this one has the session we want, clear it.
+                if (existingApplicationAction != null && existingApplicationAction != this) ApplicationActions.AddToQueue(existingApplicationAction);
+
                 SentrySdk.AddBreadcrumb(
-                    message: "Set static audio session",
-                    category: "ApplicationAction",
+                    message: "Reserved static audio session",
+                    category: actionName,
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
                         { "processName", $"{processName}" },
-                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                        { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" },
+                        { "audioSessionCount", $"{ActionAudioSessions.Count()}" }
                     }
                  );
             }
             else
             {
                 // Get the next unassigned audio session. Assign it.
-                var audioSession = pluginController.audioManager.audioSessions.Find(session =>
+                var audioSession = AudioManager.audioSessions.Find(session =>
                 {
                     // Ensure it is not a blacklisted application.
-                    var blacklistedApplication = settings.BlacklistedApplications.Find(application => application.processName == session.processName);
+                    var blacklistedApplication = actionSettings.BlacklistedApplications.Find(application => application.processName == session.processName);
                     if (blacklistedApplication != null) return false;
 
                     // Ensure no application action has the application set, both statically and dynamically.
-                    var existingApplicationAction = pluginController.applicationActions.Find(action =>
-                        action.settings.StaticApplication?.processName == session.processName || action.processName == session.processName
+                    var existingApplicationAction = ApplicationActions.applicationActions.Find(action =>
+                        session.processName == action.actionSettings.StaticApplication?.processName || action.processName == session.processName
                     );
                     if (existingApplicationAction != null) return false;
 
@@ -240,24 +187,24 @@ namespace AudioMixer
                 if (audioSession != null) this.processName = audioSession.processName;
 
                 SentrySdk.AddBreadcrumb(
-                    message: "Set new audio session",
-                    category: "ApplicationAction",
+                    message: "Reserved audio session",
+                    category: actionName,
                     level: BreadcrumbLevel.Info,
                     data: new Dictionary<string, string> {
                         { "processName", $"{processName}" },
-                        { "applicationActions", $"{pluginController.applicationActions.Count()}" },
-                        { "audioSessionCount", $"{AudioSessions.Count}" }
+                        { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" },
+                        { "audioSessionCount", $"{ActionAudioSessions.Count()}" }
                     }
-                 );
+                );
             }
 
-            // Do NOT add 0 check condition ot this outer if as it is required for the nested if of StaticApplication.
-            if (AudioSessions.Count < 1)
+            // Do NOT add 0 check condition to this outer if statement as it is required for the nested if of StaticApplication.
+            if (!ActionAudioSessions.Any())
             {
-                // If application action is static and audio session is not available, use greyscaled last known icon.
-                if (settings.StaticApplication != null)
+                // If application action is static and audio session is not available, use gray-scaled last known icon.
+                if (actionSettings.StaticApplication != null)
                 {
-                    var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
+                    var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(actionSettings.StaticApplication.processIcon));
 
                     if (controlType == Utils.ControlType.Application)
                     {
@@ -266,11 +213,11 @@ namespace AudioMixer
 
                     SentrySdk.AddBreadcrumb(
                         message: "Set unavailable static session",
-                        category: "ApplicationAction",
+                        category: actionName,
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
                             { "processName", $"{processName}" },
-                            { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                            { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" }
                         }
                     );
                 }
@@ -279,7 +226,7 @@ namespace AudioMixer
                     Logger.Instance.LogMessage(TracingLevel.INFO, "No sessions available.");
                     SentrySdk.AddBreadcrumb(
                         message: "No sessions available",
-                        category: "ApplicationAction",
+                        category: actionName,
                         level: BreadcrumbLevel.Info
                     );
 
@@ -296,164 +243,167 @@ namespace AudioMixer
                     // NOTE: All audio sessions in one process are treated as one. If one changes volume so does the other.
                     // The reasoning for this comes down to possible unwanted multiple process icons being shown, and with no way
                     // of discriminating them I felt this was the best UX. Ex: Discord opens 2 audio sessions, 1 for comms, and the other for notifications.
-                    var audioSessions = AudioSessions.ToList();
-                    audioSessions.ForEach(session => session.SessionDisconnnected += SessionDisconnected);
-                    audioSessions.ForEach(session => session.VolumeChanged += VolumeChanged);
+                    ActionAudioSessions.ForEach(session => session.OnSessionDisconnected += HandleSessionDisconnected);
+                    ActionAudioSessions.ForEach(session => session.OnVolumeChanged += HandleVolumeChanged);
 
-                    bool selected = pluginController.SelectedAction == this;
-                    bool syncedMuted = audioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
-                    var syncedVolume = audioSessions.First().session.SimpleAudioVolume.Volume;
-                    this.volume = syncedVolume;
-                    this.muted = syncedMuted;
-
-                    // Update sessions to ensure a consistent volume setting. This inturn will call to set the image.
-                    AudioSessions.ForEach(session =>
+                    // Update sessions to ensure a consistent volume setting. This in-turn will call to set the image.
+                    ActionAudioSessions.ForEach(session =>
                     {
                         // Only change them if not already the to be value to prevent recursion. 
-                        if (session.session.SimpleAudioVolume.Volume != syncedVolume) session.session.SimpleAudioVolume.Volume = syncedVolume;
-                        if (session.session.SimpleAudioVolume.Mute != syncedMuted) session.session.SimpleAudioVolume.Mute = syncedMuted;
+                        if (session.MasterVolume != MasterVolume) session.MasterVolume = MasterVolume;
+                        if (session.Mute != Mute) session.Mute = Mute;
                     });
 
-                    if (controlType == Utils.ControlType.Application)
-                    {
-                        // Assing all sessions the highest volume value found by triggering a valume change.
-                        iconImage = Utils.CreateIconImage(audioSessions.First().processIcon);
-                        volumeImage = Utils.CreateVolumeImage(this.volume);
-                        Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
-                    }
+                    SetImage();
 
-                    Logger.Instance.LogMessage(TracingLevel.INFO, $"Combined audio sessions for process {processName}");
                     SentrySdk.AddBreadcrumb(
-                        message: "Combined audio sessions",
-                        category: "ApplicationAction",
+                        message: "Set audio sessions",
+                        category: actionName,
                         level: BreadcrumbLevel.Info,
                         data: new Dictionary<string, string> {
                             { "processName", $"{processName}" },
-                            { "audioSessionCount", $"{AudioSessions.Count}" }
+                            { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" },
+                            { "audioSessionCount", $"{ActionAudioSessions.Count()}" }
                         }
                     );
-
                 }
-                // AudioSession may be released by the time the images are created/set. Retry re-setting session.
                 catch (Exception ex)
                 {
-                    Logger.Instance.LogMessage(TracingLevel.WARN, ex.Message);
-                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+                    Logger.Instance.LogMessage(TracingLevel.ERROR, ex.Message);
+                    SentrySdk.CaptureException(ex, scope => { scope.TransactionName = actionName; });
 
-                    pluginController.AddActionToQueue(this);
+                    ApplicationActions.Reload();
                 }
             }
         }
 
-        public void ReleaseAudioSession(bool resetIcon = true)
+        public void SetImage()
+        {
+            if (controlType == Utils.ControlType.Application)
+            {
+                // Assigning all sessions the highest volume value found by triggering a volume change.
+                iconImage = Utils.CreateIconImage(ActionAudioSessions.First().processIcon);
+                volumeImage = Utils.CreateTextImage(Utils.FormatVolume(MasterVolume));
+                bool isSelected = ApplicationActions.SelectedAction == this;
+                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, isSelected, Mute), null, true);
+            }
+        }
+
+        public void ReleaseAudioSession(AudioSession session)
+        {
+            SentrySdk.AddBreadcrumb(
+                  message: "Releasing audio session",
+                  category: actionName,
+                  level: BreadcrumbLevel.Info,
+                  data: new Dictionary<string, string> {
+                      { "processName", $"{processName}" },
+                  }
+               );
+
+            session.OnSessionDisconnected -= HandleSessionDisconnected;
+            session.OnVolumeChanged -= HandleVolumeChanged;
+        }
+
+        public void ReleaseAudioSessions()
         {
             try
             {
                 SentrySdk.AddBreadcrumb(
-                    message: "Releasing audio session",
-                    category: "ApplicationAction",
-                    level: BreadcrumbLevel.Info,
-                     data: new Dictionary<string, string> {
+                   message: "Releasing audio sessions",
+                   category: actionName,
+                   level: BreadcrumbLevel.Info,
+                   data: new Dictionary<string, string> {
                         { "processName", $"{processName}" },
-                        { "applicationActions", $"{pluginController.applicationActions.Count()}" }
-                     }
+                        { "sessionCount", $"{ActionAudioSessions.Count()}" }
+                   }
                 );
 
-                if (controlType == Utils.ControlType.Application)
-                {
-                    // We only want to reset the icon if we don't know what it's next one will be.
-                    if (resetIcon && settings.StaticApplication == null) Connection.SetImageAsync((string)null, null, true);
-                }
-
                 // Iterate through all audio sessions as by this time it could already been removed.
-                AudioSessions.ToList().ForEach(session =>
-                {
-                    session.SessionDisconnnected -= SessionDisconnected;
-                    session.VolumeChanged -= VolumeChanged;
-                });
-            } catch (Exception ex)
+                ActionAudioSessions.ForEach(ReleaseAudioSession);
+            }
+            catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.WARN, ex.Message);
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = actionName; });
             }
-
-            this.processName = null;
+            finally
+            {
+                this.processName = null;
+                // Clear the selected action
+                // ApplicationActions.SelectedAction = null;
+            }
         }
 
-        void SessionDisconnected(object sender, EventArgs e)
+        void HandleSessionDisconnected(object sender, EventArgs e)
         {
             SentrySdk.AddBreadcrumb(
-                message: "Session disconnected",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> {
+            message: "Session disconnected",
+            category: actionName,
+            level: BreadcrumbLevel.Info,
+            data: new Dictionary<string, string> {
                     { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{muted}" },
-                    { "currentVolume", $"{volume}" },
-                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                    { "mute", $"{Mute}" },
+                    { "masterVolume", $"{MasterVolume}" },
+                    { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" }
                 }
             );
 
-            if (AudioSessions.Count < 2) pluginController.AddActionToQueue(this);
+            if (ActionAudioSessions.Count() < 2) ApplicationActions.AddToQueue(this);
         }
 
-        void VolumeChanged(object sender, AudioSession.VolumeChangedEventArgs e)
+        void HandleVolumeChanged(object sender, AudioSession.VolumeChangedEventArgs e)
         {
             SentrySdk.AddBreadcrumb(
                 message: "Volume changed",
-                category: "ApplicationAction",
+                category: actionName,
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
                     { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{muted}" },
-                    { "currentVolume", $"{volume}" },
-                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                    { "mute", $"{Mute}" },
+                    { "masterVolume", $"{MasterVolume}" },
+                    { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" }
                 }
             );
 
-            AudioSession senderSession = sender as AudioSession;
-            volume = senderSession.session.SimpleAudioVolume.Volume;
-            muted = senderSession.session.SimpleAudioVolume.Mute;
+            // NOTE: Do not use event arguments as they are the value prior to the change. Also volume and mute are set independently causing two events to get fired.
+            // Find the updated session and update all to ensure a consistent volume setting. This in-turn will call to set the image.
+            var updatedSession = ActionAudioSessions.FirstOrDefault(session => session.Equals(sender));
+            if (updatedSession == null) return;
 
-            // Update sessions to ensure a consistent volume setting.
-            AudioSessions.ToList().ForEach(session =>
+            var newMasterVolume = updatedSession.MasterVolume;
+            var newMute = updatedSession.Mute;
+            ActionAudioSessions.ForEach(session =>
             {
                 // Only change them if not already the to be value to prevent recursion. 
-                if (session.session.SimpleAudioVolume.Volume != senderSession.session.SimpleAudioVolume.Volume)
-                {
-                    session.session.SimpleAudioVolume.Volume = senderSession.session.SimpleAudioVolume.Volume;
-                }
-                if (session.session.SimpleAudioVolume.Mute != senderSession.session.SimpleAudioVolume.Mute)
-                {
-                    session.session.SimpleAudioVolume.Mute = muted;
-                }
+                if (session.MasterVolume != newMasterVolume) session.MasterVolume = newMasterVolume;
+                if (session.Mute != newMute) session.Mute = newMute;
             });
 
             // Only update the key if its being displayed as an application.
             if (controlType == Utils.ControlType.Application)
             {
-                volumeImage = Utils.CreateVolumeImage(volume);
-                Boolean selected = pluginController.SelectedAction == this;
-                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                bool selected = ApplicationActions.SelectedAction == this;
+                volumeImage = Utils.CreateTextImage(Utils.FormatVolume(MasterVolume));
+                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, Mute), null, true);
             }
         }
 
         public override void KeyPressed(KeyPayload payload)
         {
             SentrySdk.AddBreadcrumb(
-                message: "Key pressed",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> {
+               message: "Key pressed",
+               category: actionName,
+               level: BreadcrumbLevel.Info,
+               data: new Dictionary<string, string> {
                     { "processName", $"{processName}" },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{muted}" },
-                    { "currentVolume", $"{volume}" },
-                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
-                }
-            );
+                    { "mute", $"{Mute}" },
+                    { "masterVolume", $"{MasterVolume}" },
+                    { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" }
+               }
+           );
 
             Logger.Instance.LogMessage(TracingLevel.INFO, "Key Pressed");
 
@@ -461,133 +411,95 @@ namespace AudioMixer
             timer.Start();
         }
 
-        private void KeyHoldEvent(object timerSender, ElapsedEventArgs elapsedEvent)
-        {
-            if (controlType == Utils.ControlType.VolumeUp || controlType == Utils.ControlType.VolumeDown)
-            {
-                SetVolume();
-            }
-        }
-
-        public override void KeyReleased(KeyPayload payload)
-        {
-            Logger.Instance.LogMessage(TracingLevel.INFO, "Key Released");
-            SentrySdk.AddBreadcrumb(
-                message: "Key released",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> {
-                    { "processName", $"{processName}" },
-                    { "controlType", $"{controlType}" },
-                    { "isMuted", $"{muted}" },
-                    { "currentVolume", $"{volume}" },
-                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
-                }
-            );
-
-            timer.Stop();
-            stopWatch.Stop();
-
-            if (controlType == Utils.ControlType.Application)
-            {
-                if (processName == null) return;
-
-                if (stopWatch.ElapsedMilliseconds >= 2000)
-                {
-                    ToggleBlacklistApp(processName);
-
-                } else if (AudioSessions.Count > 0) pluginController.SelectedAction = this;
-            } else
-            {
-                SetVolume();
-            }
-        }
-
-        private void SetVolume()
+        private void SetSelectedActionVolume()
         {
             try
             {
-                SimpleAudioVolume volume = pluginController.SelectedAction?.AudioSessions?[0]?.session?.SimpleAudioVolume;
-                if (volume == null)
+                if (ApplicationActions.SelectedAction == null || !ApplicationActions.SelectedAction.ActionAudioSessions.Any())
                 {
-                    pluginController.SelectedAction = null;
-
-                    // TODO: Can be removed?
-                    throw new Exception("Missing volume object in plugin action. It was likely closed when active.");
+                    SentrySdk.AddBreadcrumb(
+                        message: "No selected action, or missing audio sessions",
+                        category: actionName,
+                        level: BreadcrumbLevel.Info,
+                        data: new Dictionary<string, string> {
+                            { "selectedAction", $"{ApplicationActions.SelectedAction.processName}" },
+                            { "selectedActionAudioSessions", $"{ApplicationActions.SelectedAction.ActionAudioSessions.Count()}" }
+                        }
+                    );
+                    return;
                 }
 
                 float newVolume = 1F;
-                float volumeStep = (float)Int32.Parse(settings.VolumeStep) / 100;
+                float volumeStep = (float)Int32.Parse(pluginController.globalSettings.GlobalVolumeStep) / 100;
                 switch (controlType)
                 {
-                    case Utils.ControlType.Mute:
-                        volume.Mute = !volume.Mute;
+                    case Utils.ControlType.VolumeMute:
+                        ApplicationActions.SelectedAction.Mute = !ApplicationActions.SelectedAction.Mute;
                         break;
                     case Utils.ControlType.VolumeDown:
-                        if (volume.Mute) volume.Mute = !volume.Mute;
+                        if (ApplicationActions.SelectedAction.Mute) ApplicationActions.SelectedAction.Mute = !ApplicationActions.SelectedAction.Mute;
                         else
                         {
-                            newVolume = volume.Volume - (volumeStep);
-                            volume.Volume = newVolume < 0F ? 0F : newVolume;
+                            newVolume = ApplicationActions.SelectedAction.MasterVolume - (volumeStep);
+                            ApplicationActions.SelectedAction.MasterVolume = newVolume < 0F ? 0F : newVolume;
                         }
                         break;
                     case Utils.ControlType.VolumeUp:
-                        if (volume.Mute) volume.Mute = !volume.Mute;
+                        if (ApplicationActions.SelectedAction.Mute) ApplicationActions.SelectedAction.Mute = !ApplicationActions.SelectedAction.Mute;
                         else
                         {
-                            newVolume = volume.Volume + volumeStep;
-                            volume.Volume = newVolume > 1F ? 1F : newVolume;
+                            newVolume = ApplicationActions.SelectedAction.MasterVolume + volumeStep;
+                            ApplicationActions.SelectedAction.MasterVolume = newVolume > 1F ? 1F : newVolume;
                         }
                         break;
                 }
 
                 // Assign to all sessions
-                pluginController.SelectedAction.AudioSessions.ToList().ForEach(session =>
+                /*  ApplicationActions.SelectedAction?.ActionAudioSessions.ToList().ForEach(session =>
                 {
-                    session.session.SimpleAudioVolume.Volume = volume.Volume;
-                    session.session.SimpleAudioVolume.Mute = volume.Mute;
-                });
+                    session.MasterVolume = MasterVolume;
+                    session.Mute = Mute;
+                });*/
             }
             catch (Exception ex)
             {
                 Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = actionName; });
             }
         }
 
         public void SetSelected(Boolean selected)
         {
-            if (AudioSessions.Count > 0)
+            if (ActionAudioSessions.Count() > 0)
             {
-                Boolean muted = AudioSessions.Any(session => session.session.SimpleAudioVolume.Mute == true);
-                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, muted), null, true);
+                Connection.SetImageAsync(Utils.CreateAppKey(iconImage, volumeImage, selected, Mute), null, true);
             }
             else
             {
-                if (settings?.StaticApplication != null)
+                if (actionSettings?.StaticApplication != null)
                 {
-                    var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(settings.StaticApplication.processIcon));
+                    var lastKnownIcon = Utils.CreateIconImage(Utils.Base64ToBitmap(actionSettings.StaticApplication.processIcon));
                     Connection.SetImageAsync(Utils.CreateAppKey(lastKnownIcon, volumeImage, false, false, false), null, true);
                 }
             }
         }
 
-        public async Task SetControlType(Utils.ControlType controlType)
+        public void SetControlType(Utils.ControlType controlType)
         {
             this.controlType = controlType;
             switch (controlType)
             {
-                case Utils.ControlType.Mute:
-                    await Connection.SetImageAsync(Utils.CreateMuteKey(), null, true);
+                case Utils.ControlType.VolumeMute:
+                    _ = Connection.SetImageAsync(Utils.CreateVolumeMuteKey(), null, true);
                     break;
                 case Utils.ControlType.VolumeDown:
-                    await Connection.SetImageAsync(Utils.CreateVolumeDownKey((float)Int32.Parse(settings.VolumeStep)), null, true);
+                    _ = Connection.SetImageAsync(Utils.CreateVolumeDownKey((float)Int32.Parse(actionSettings.GlobalVolumeStep)), null, true);
                     break;
                 case Utils.ControlType.VolumeUp:
-                    await Connection.SetImageAsync(Utils.CreateVolumeUpKey((float)Int32.Parse(settings.VolumeStep)), null, true);
+                    _ = Connection.SetImageAsync(Utils.CreateVolumeUpKey((float)Int32.Parse(actionSettings.GlobalVolumeStep)), null, true);
                     break;
                 default:
-                    pluginController.AddActionToQueue(this);
+                    ApplicationActions.AddToQueue(this);
                     break;
             }
         }
@@ -597,310 +509,203 @@ namespace AudioMixer
             Logger.Instance.LogMessage(TracingLevel.INFO, $"{processName} added to blacklist");
             SentrySdk.AddBreadcrumb(
                 message: "Add to blacklist",
-                category: "ApplicationAction",
+                category: actionName,
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string> {
                     { "processName", $"{processName}" },
-                    { "applicationActions", $"{pluginController.applicationActions.Count()}" }
+                    { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" }
                 }
             );
 
-            var staticApp = globalSettings.StaticApplications.Find(session => session.processName == processName);
+            var staticApp = pluginController.globalSettings.StaticApplications.Find(session => session.processName == processName);
             if (staticApp != null) return;
 
-            var existingBlacklistedApp = settings.BlacklistedApplications.Find(session => session.processName == processName);
+            var existingBlacklistedApp = actionSettings.BlacklistedApplications.Find(session => session.processName == processName);
             if (existingBlacklistedApp != null)
             {
-                settings.BlacklistedApplications.Remove(existingBlacklistedApp);
-                settings.BlacklistApplicationName = null;
+                actionSettings.BlacklistedApplications.Remove(existingBlacklistedApp);
+                actionSettings.BlacklistedApplicationName = null;
             }
             else
             {
-                AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
+                AudioSession audioSession = AudioManager.audioSessions.Find(session => session.processName == processName);
 
                 if (audioSession != null)
                 {
-                    settings.BlacklistedApplications.Add(new AudioSessionSetting(audioSession));
-                    settings.BlacklistApplicationName = null;
+                    actionSettings.BlacklistedApplications.Add(new AudioSessionSetting(audioSession));
+                    actionSettings.BlacklistedApplicationName = null;
                 }
             }
 
+            // Save only global, as it will update the local settings.
             await SaveGlobalSettings();
         }
 
-        public async Task RefreshApplicationSelectors(bool save = true)
-        {
-            SentrySdk.AddBreadcrumb(
-                message: "Refresh applications",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info
-            );
-
-            var applications = new List<AudioSession>(pluginController.audioManager.audioSessions).ConvertAll(session => new AudioSessionSetting(session));
-
-            // Remove duplicate process'
-            var distinctApplications = applications.DistinctBy(app => app.processName).ToList();
-
-            /**
-            * Static
-            **/
-            settings.StaticApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
-
-            // TODO: Add additional logic removing imposible combinations. Handle if one was already set.
-            settings.StaticApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
-            settings.StaticApplicationSelector.RemoveAll(app => globalSettings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
-
-            // If this is a static process which does not have an active audio session, add it to the selector.
-            if (settings.StaticApplication != null)
-            {
-                var staticApplication = settings.StaticApplicationSelector.Find(app => app.processName == settings.StaticApplication.processName); 
-                if (staticApplication == null) {
-                    settings.StaticApplicationSelector.Add(settings.StaticApplication);
-                }
-            }
-
-            /**
-             * Blacklist
-             * 
-             * NOTES: 
-             * - The blacklist selector should also include blacklisted apps
-             **/
-            settings.BlacklistApplicationSelector = new List<AudioSessionSetting>(distinctApplications).Concat(globalSettings.BlacklistedApplications).DistinctBy(app => app.processName).ToList();
-            settings.BlacklistApplicationSelector.RemoveAll(app => globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
-            settings.BlacklistApplicationSelector.RemoveAll(app => globalSettings.WhitelistedApplications.Find(_app => _app.processName == app.processName) != null);
-
-
-            /**
-             * Whitlist
-             **/
-            settings.WhitelistApplicationSelector = new List<AudioSessionSetting>(distinctApplications);
-            settings.WhitelistApplicationSelector.RemoveAll(app => settings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
-
-            if (save)
-            {
-                await SaveSettings();
-            }
-        }
-
-        // Global settings are received on action initialization. Local settings are only received when changed in the PI.
-        public async override void ReceivedGlobalSettings(ReceivedGlobalSettingsPayload payload)
+        // TODO: Anytime the global settings update we want to refresh, however we don't want this to make recursive calls.
+        public async Task RefreshApplications()
         {
             try
             {
                 SentrySdk.AddBreadcrumb(
-                    message: "Received global settings",
-                    category: "ApplicationAction",
-                    level: BreadcrumbLevel.Info,
-                    data: new Dictionary<string, string> { { "settings", payload.Settings.ToString() } }
+                    message: "Refresh applications",
+                    category: actionName,
+                    level: BreadcrumbLevel.Info
                 );
 
-                // Global Settings exist
-                if (payload?.Settings != null && payload.Settings.Count > 0)
-                {
-                    globalSettings = payload.Settings.ToObject<GlobalSettings>();
-                    settings.VolumeStep = globalSettings.VolumeStep;
-                    settings.BlacklistedApplications = globalSettings.BlacklistedApplications;
-                    settings.WhitelistedApplications = globalSettings.WhitelistedApplications;
-                    settings.InlineControlsEnabled = globalSettings.InlineControlsEnabled;
-                    settings.InlineControlsHoldDuration = globalSettings?.InlineControlsHoldDuration ?? GlobalSettings.INLINE_CONTROLS_HOLD_DURATION;
-                    settings.InlineControlsTimeout = globalSettings?.InlineControlsTimeout ?? GlobalSettings.INLINE_CONTROLS_TIMEOUT;
-                    await RefreshApplicationSelectors(false);
-                    await SaveSettings();
+                var applications = AudioManager.audioSessions.ConvertAll(session => new AudioSessionSetting(session));
 
-                    // Only once the settings are set do we then add the action.
-                    var currentAction = pluginController.applicationActions.Find((action) => action.coords == coords);
-                    if (currentAction == null)
+                // Remove duplicate process'
+                var distinctApplications = applications.DistinctBy(app => app.processName).ToList();
+
+                /**
+                * Static
+                **/
+                actionSettings.StaticApplicationsSelector = new List<AudioSessionSetting>(distinctApplications);
+
+                // TODO: Add additional logic removing impossible combinations. Handle if one was already set.
+                actionSettings.StaticApplicationsSelector.RemoveAll(app => pluginController.globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
+                actionSettings.StaticApplicationsSelector.RemoveAll(app => pluginController.globalSettings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
+
+                // If this is a static process which does not have an active audio session, add it to the selector.
+                if (actionSettings.StaticApplication != null)
+                {
+                    var staticApplication = actionSettings.StaticApplicationsSelector.Find(app => app.processName == actionSettings.StaticApplication.processName);
+                    if (staticApplication == null)
                     {
-                        pluginController.AddAction(this);
+                        actionSettings.StaticApplicationsSelector.Add(actionSettings.StaticApplication);
                     }
+                }
 
-                    pluginController.UpdateActions();
-                }
-                else // Global settings do not exist, create new one and SAVE it
-                {
-                    Logger.Instance.LogMessage(TracingLevel.WARN, $"No global settings found, creating new object");
-                    globalSettings = GlobalSettings.CreateDefaultSettings();
-                    await SaveGlobalSettings();
-                }
+                /**
+                 * Blacklist
+                 * 
+                 * NOTES: 
+                 * - The blacklist selector should also include blacklisted apps
+                 **/
+                actionSettings.BlacklistedApplicationsSelector = new List<AudioSessionSetting>(distinctApplications).Concat(pluginController.globalSettings.BlacklistedApplications).DistinctBy(app => app.processName).ToList();
+                actionSettings.BlacklistedApplicationsSelector.RemoveAll(app => pluginController.globalSettings.StaticApplications.Find(_app => _app.processName == app.processName) != null);
+                actionSettings.BlacklistedApplicationsSelector.RemoveAll(app => pluginController.globalSettings.WhitelistedApplications.Find(_app => _app.processName == app.processName) != null);
+
+
+                /**
+                 * Whitelist
+                 **/
+                actionSettings.WhitelistedApplicationsSelector = new List<AudioSessionSetting>(distinctApplications);
+                actionSettings.WhitelistedApplicationsSelector.RemoveAll(app => actionSettings.BlacklistedApplications.Find(_app => _app.processName == app.processName) != null);
+
+                await SaveSettings();
             }
             catch (Exception ex)
             {
-                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedGlobalSettings Exception: {ex}");
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
-
-                ResetSettings();
+                Logger.Instance.LogMessage(TracingLevel.ERROR, ex.ToString());
+                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = actionName; });
             }
         }
 
-        private Task SaveGlobalSettings()
-        {
-            SentrySdk.AddBreadcrumb(
-                message: "Save global settings",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
-            );
-
-            globalSettings.VolumeStep = settings.VolumeStep;
-            globalSettings.BlacklistedApplications = settings.BlacklistedApplications;
-            globalSettings.WhitelistedApplications = settings.WhitelistedApplications;
-            globalSettings.InlineControlsEnabled = settings.InlineControlsEnabled;
-            globalSettings.InlineControlsHoldDuration = settings.InlineControlsHoldDuration;
-
-            return Connection.SetGlobalSettingsAsync(JObject.FromObject(globalSettings));
-        }
-
-        // NOTE: Does not get called by calls to SaveSettings
-        public override async void ReceivedSettings(ReceivedSettingsPayload payload)
-        {
-            try
-            {
-                SentrySdk.AddBreadcrumb(
-                    message: "Received settings",
-                    category: "ApplicationAction",
-                    level: BreadcrumbLevel.Info,
-                    data: new Dictionary<string, string> { { "setting", payload.Settings.ToString() } }
-                );
-
-                Tools.AutoPopulateSettings(settings, payload.Settings);
-
-                await SaveGlobalSettings();
-                await SaveSettings();
-            } catch(Exception ex)
-            {
-                Logger.Instance.LogMessage(TracingLevel.ERROR, $"{GetType()} ReceivedSettings Exception: {ex}");
-                SentrySdk.CaptureException(ex, scope => { scope.TransactionName = "ApplicationAction"; });
-
-                ResetSettings();
-            }
-        }
-
-        private Task SaveSettings()
-        {
-            SentrySdk.AddBreadcrumb(
-                message: "Save settings",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
-            );
-
-            settings.DeviceId = pluginController.deviceId;
-
-            return Connection.SetSettingsAsync(JObject.FromObject(settings));
-        }
-
-        private async void ResetSettings(bool includeGlobal = true)
-        {
-            SentrySdk.AddBreadcrumb(
-                message: "Reset settings",
-                category: "ApplicationAction",
-                level: BreadcrumbLevel.Info,
-                data: new Dictionary<string, string> { { "setting", settings.ToString() } }
-            );
-            
-            if (includeGlobal)
-            {
-                globalSettings = GlobalSettings.CreateDefaultSettings();
-                await SaveGlobalSettings();
-            }
-
-            settings = PluginSettings.CreateDefaultSettings();
-            await SaveSettings();
-
-            await RefreshApplicationSelectors();
-        }
-
+        // TODO: Handle empty processName or omit them as sessions.
         private async void ToggleStaticApp(string processName)
         {
             if (string.IsNullOrEmpty(processName))
             {
-                if (settings.StaticApplication == null) return;
+                if (actionSettings.StaticApplication == null) return;
+                
+                pluginController.globalSettings.StaticApplications.Remove((actionSettings.StaticApplication));
 
-                var staticApplication = globalSettings.StaticApplications.Find(session => session.processName == settings.StaticApplication.processName);
-                if (staticApplication != null)
-                {
-                    globalSettings.StaticApplications.Remove(staticApplication);
-
-                    settings.StaticApplication = null;
-                    settings.StaticApplicationName = null;
-                }  
+                actionSettings.StaticApplication = null;
+                actionSettings.StaticApplicationName = null;
             }
             else
             {
-                // If one was previously set, remove it.
-                if (settings.StaticApplication != null) 
+                // Check for an existing static application. If one exist replace it with this one.
+               /* var existingStaticApplication = ApplicationActions.applicationActions.Find(action => action.actionSettings.StaticApplication.processName == processName && action != this);
+                if (existingStaticApplication != null)
                 {
-                    var staticApplication = globalSettings.StaticApplications.Find(session => session.processName == settings.StaticApplication.processName);
-                    globalSettings.StaticApplications.Remove(staticApplication);
+                    existingStaticApplication.ToggleStaticApp(null);
+                }*/
+
+                // If the current action is already a static application, clear it.
+                if (actionSettings.StaticApplication != null)
+                {
+                    var staticApplication = pluginController.globalSettings.StaticApplications.Find(session => session.processName == actionSettings.StaticApplication.processName);
+                    pluginController.globalSettings.StaticApplications.Remove(staticApplication);
                 }
 
-                AudioSession audioSession = pluginController.audioManager.audioSessions.Find(session => session.processName == processName);
+                AudioSession audioSession = AudioManager.audioSessions.Find(session => session.processName == processName);
                 if (audioSession == null) return;
 
                 // Ensure it is not a static application.
-                if (globalSettings.StaticApplications.Find(session => session.processName == processName) != null) return;
+                if (pluginController.globalSettings.StaticApplications.Find(session => session.processName == processName) != null) return;
                 // Ensure it is not in the blacklist.
-                if (globalSettings.BlacklistedApplications.Find(app => app.processName == processName) != null) return;
+                if (pluginController.globalSettings.BlacklistedApplications.Find(app => app.processName == processName) != null) return;
 
-                settings.StaticApplication = new AudioSessionSetting(audioSession);
-                settings.StaticApplicationName = settings.StaticApplication.processName;
+                actionSettings.StaticApplication = new AudioSessionSetting(audioSession);
+                actionSettings.StaticApplicationName = actionSettings.StaticApplication.processName;
 
-                globalSettings.StaticApplications.Add(settings.StaticApplication);
+                // Add it to the global settings list. 
+                pluginController.globalSettings.StaticApplications.Add(actionSettings.StaticApplication);
             }
 
-            await SaveGlobalSettings();
-            await SaveSettings();
-
-            pluginController.UpdateActions();
+            // Save only global, as it will update the local settings.
+            SaveGlobalSettings();
         }
 
-        private async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
+        public override async Task SaveGlobalSettings(bool triggerDidReceiveGlobalSettings = true)
+        {
+            await base.SaveGlobalSettings();
+
+            ApplicationActions.Reload();
+        }
+
+        public override async void OnSendToPlugin(object sender, BarRaider.SdTools.Wrappers.SDEventReceivedEventArgs<BarRaider.SdTools.Events.SendToPlugin> e)
         {
             var payload = e.Event.Payload;
+            if (payload["action"] == null || payload["action"].ToString() != "application") return;
 
             Logger.Instance.LogMessage(TracingLevel.INFO, JObject.FromObject(new Dictionary<string, string> {
-                        { "processName", processName },
-                        { "controlType", $"{controlType}" },
-                        { "isMuted", $"{muted}" },
-                        { "currentVolume", $"{volume}" },
-                        { "applicationActions", $"{pluginController.applicationActions.Count()}" },
-                        { "payload", payload.ToString() }
-                    }).ToString());
+               { "processName", processName },
+               { "controlType", $"{controlType}" },
+               { "mute", $"{Mute}" },
+               { "masterVolume", $"{MasterVolume}" },
+               { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" },
+               { "payload", payload.ToString() }
+            }).ToString());
 
             SentrySdk.AddBreadcrumb(
                 message: "Received data from property inspector",
-                category: "ApplicationAction",
+                category: actionName,
                 level: BreadcrumbLevel.Info,
                 data: new Dictionary<string, string>{
                     { "processName", processName },
                     { "controlType", $"{controlType}" },
-                    { "isMuted", $"{muted}" },
-                    { "currentVolume", $"{volume}" },
-                    { "applicationActions", $"{pluginController.applicationActions.Count()}" },
+                    { "mute", $"{Mute}" },
+                    { "masterVolume", $"{MasterVolume}" },
+                    { "applicationActions", $"{ApplicationActions.applicationActions.Count()}" },
                     { "payload", payload.ToString() }
                  }
             );
 
             if (payload["property_inspector"] != null)
             {
-                switch (payload["property_inspector"].ToString().ToLowerInvariant())
+                switch (payload["property_inspector"].ToString())
                 {
-                    case "setstaticapp":
+                    case "setStaticApp":
                         ToggleStaticApp(payload["value"].ToString());
                         break;
-                    case "toggleblacklistapp":
+                    case "toggleBlacklistedApp":
                         ToggleBlacklistApp(payload["value"].ToString());
                         break;
-                    case "refreshapplications":
-                        RefreshApplicationSelectors();
+                    case "refreshApplications":
+                        await RefreshApplications();
                         break;
-                    case "resetsettings":
-                        ResetSettings();
+                    case "resetGlobalSettings":
+                        await ResetGlobalSettings();
+                        break;
+                    case "resetSettings":
+                        await ResetSettings();
+                        await RefreshApplications();
                         break;
                 }
             }
         }
-
-        public override void OnTick() { }
     }
 }

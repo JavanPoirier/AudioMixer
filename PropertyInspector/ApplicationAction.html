@@ -6,18 +6,17 @@
     <meta name=apple-mobile-web-app-capable content=yes>
     <meta name=apple-mobile-web-app-status-bar-style content=black>
     <title>AudioMixer Settings</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdpi.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@master/src/rangeTooltip.css">
-    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@latest/src/sdtools.common.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@master/src/rangeTooltip.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@1.4.3/src/sdpi.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@1.4.3/src/rangeTooltip.css">
+    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@1.4.3/src/sdtools.common.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/barraider/streamdeck-easypi@1.4.3/src/rangeTooltip.js"></script>
     <script src="ApplicationAction.js"></script>
 </head>
 <body>
     <div class="sdpi-wrapper">
-        <!--  -->
         <div class="sdpi-item" id="dvStaticApp">
             <div class="sdpi-item-label">Application</div>
-            <select class="sdpi-item-value select sdProperty sdList" id="staticApplicationSelector" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApp()"></select>
+            <select class="sdpi-item-value select sdProperty sdList" id="staticApplicationsSelector" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="staticApplicationName" oninput="setStaticApp()"></select>
             <button class="sdpi-item-value max20" onclick="setStaticApp(true)">Clear</button>
         </div>
         <div class="sdpi-item">
@@ -25,16 +24,20 @@
                 <summary>Statically set this key to a specific application. (Optional)</summary>
             </details>
         </div>
+        <div class="sdpi-item" id="dvRefresh" style="margin-top:10px">
+            <div class="sdpi-item-label" style="font-size:0"></div>
+            <button class="sdpi-item-value" onclick="resetSettings()">Reset Settings</button>
+        </div>
+
         <div class="sdpi-heading">Global Settings</div>
 
-        <!--  -->
-        <div type="range" class="sdpi-item sdShowTooltip" id="dvVolumeStep">
+        <div type="range" class="sdpi-item sdShowTooltip" id="dvGlobalVolumeStep">
             <div class="sdpi-item-label">Volume Step</div>
             <div class="sdpi-item-value">
                 <span class="clickable" value="1">1</span>
-                <input type="range" min="1" max="25" data-suffix=" +/-" value="10" class="sdProperty" oninput="setSettings()" id="volumeStep">
+                <input type="range" min="1" max="25" data-suffix=" +/-" value="10" class="sdProperty" oninput="setSettings()" id="globalVolumeStep">
                 <span class="clickable" value="25">25</span>
-                <label for="volumeStep" class="rangeLabel"></label>
+                <label for="globalVolumeStep" class="rangeLabel"></label>
             </div>
         </div>
         <div class="sdpi-info-label hidden" style="top: -1000px;" value="">Tooltip</div>
@@ -42,7 +45,6 @@
             <span class="titleAlignedSmall" style="padding-left: 100px !important;">(Use left/right keys for added precision)</span>
         </div>
 
-        <!--  -->
         <div class="sdpi-item" id="dvInlineControls">
             <div class="sdpi-item-label">Inline Controls</div>
             <div class="sdpi-item-value">
@@ -64,48 +66,25 @@
             </details>
         </div>
 
-        <!--  -->
         <div type="list" class="sdpi-item list" id="dvBlacklist">
             <div class="sdpi-item-label">Blacklist</div>
             <ol class="sdpi-item-value" id="blacklist" style="height:100px;"></ol>
         </div>
-        <div class="sdpi-item" id="dvBlacklistApplicationSelector">
+        <div class="sdpi-item" id="dvBlacklistedApplicationsSelector">
             <div class="sdpi-item-label" style="font-size:0"></div>
-            <select class="sdpi-item-value select sdProperty sdList" id="blacklistApplicationSelector" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="blacklistApplicationName" oninput=""></select>
-            <button class="max20" onclick="toggleBlacklistApp()">Add/Remove</button>
+            <select class="sdpi-item-value select sdProperty sdList" id="blacklistedApplicationsSelector" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="blacklistedApplicationName" oninput=""></select>
+            <button class="max20" onclick="toggleBlacklistedApp()">Add/Remove</button>
         </div>
 
-        <!--  -->
-        <!--<div type="list" class="sdpi-item list" id="dvWhitelist" style="min-height:50px;max-height:100px;margin-top:10px">
-        <div class="sdpi-item-label">Whitelist</div>
-        <ol class="sdpi-item-value" id="whitelist">
-            <li>Milk</li>
-            <li>Bread</li>
-            <li>Chocolate</li>
-            <li>More chocolate</li>
-        </ol>
-    </div>
-    <div class="sdpi-item" id="dvWhitelistSelector">
-        <div class="sdpi-item-label" style="font-size:0"></div>
-        <select class="sdpi-item-value select sdProperty sdList" id="whitelistApplications" sdListTextProperty="processName" sdListValueProperty="processName" sdValueField="whitelistApplicationName" oninput=""></select>
-        <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
-    </div>-->
-        <!--<div class="sdpi-item" id="dvWhitelist">
-        <div class="sdpi-item-label" style="font-size:0"></div>
-        <select class="sdpi-item-value select sdProperty sdList" id="whitelistApplications" sdListTextProperty="nameWithPID" sdListValueProperty="nameWithPID" sdValueField="whitelistApplicationNameWithPID"></select>
-        <button class="max20" onclick="toggleFromBlacklist()">Add/Remove</button>
-    </div>-->
-        <!--  -->
         <div class="sdpi-item" id="dvRefresh" style="margin-top:10px">
             <div class="sdpi-item-label" style="font-size:0"></div>
             <button class="sdpi-item-value" onclick="refreshApplications()">Refresh Applications</button>
         </div>
         <div class="sdpi-item" id="dvRefresh" style="margin-top:10px">
             <div class="sdpi-item-label" style="font-size:0"></div>
-            <button class="sdpi-item-value" onclick="resetSettings()">Reset Settings</button>
+            <button class="sdpi-item-value" onclick="resetGlobalSettings()">Reset Global Settings</button>
         </div>
 
-        <!--  -->
         <hr />
         <div class="sdpi-item">
             <div class="sdpi-item-label">Controls</div>
@@ -115,8 +94,8 @@
         </div>
 
         <div class="sdpi-item">
-            <div class="sdpi-item-label">Device ID</div>
-            <input class="sdpi-item-value" id="deviceId" disabled>
+            <div class="sdpi-item-label">UUID</div>
+            <input class="sdpi-item-value" id="uuid" disabled>
             <!-- <div class="sdHTML" />-->
         </div>
     </div>
